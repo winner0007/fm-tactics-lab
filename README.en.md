@@ -1,6 +1,48 @@
-# FM Tactics Lab
+# FM Tactics Lab · Native Mac Extension
 
 [简体中文](README.md) | **English**
+
+This repository forks [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab), preserves its Windows implementation, and adds a SwiftUI client and native macOS match host under `macos/`. Current Mac version: **0.4**. Upstream baseline: **v1109.3 / [6cb32bf](https://github.com/lqf0624/fm-tactics-lab/commit/6cb32bfab936d1ce2a0558a70f489537edfb5442)**.
+
+## About the upstream project
+
+FM Tactics Lab runs tactical experiments with the original detailed FM27 match engine installed on the user's computer. Its Windows version connects dual-phase tactical boards, squads, set pieces, career-save matches and FMF import/export to seeded batch execution, A/B comparisons and native match statistics. It uses a web editor, Python service, C# desktop launcher and Windows C++ host.
+
+Credit for the original design and Windows implementation belongs to the upstream author and contributors. The tool code remains [MIT-licensed](LICENSE). The Mac host separately handles Mach-O loading, the arm64 C++ ABI, resource mounts and macOS thread context.
+
+## Mac 0.4 additions
+
+- Native SwiftUI/AppKit client for macOS 14+ on Apple Silicon, with autosave, undo/redo, JSON workspaces and CSV exchange.
+- Dual-phase boards with a shared lineup, drag-to-swap, reference snapshots and configuration differences.
+- Team, position and individual ability presets: random, amateur, semi-professional, professional, national, continental and international. Each player attribute is sampled within a range; these are experimental presets, not official CA/reputation conversions.
+- Team/player instructions, set-piece taker and responsibility priorities, left/right setups and substitute fallback; condition, familiarity, personality and relationship records.
+- Automatic installation discovery across Steam libraries, application folders and external disks, with manual selection as a fallback.
+- Original Mac engine initialization and natural completion using the game's bundled test fixture; 1/5/10/20-match seed sequences, isolated processes, cancellation and timeouts.
+- Actual xG timelines, team/player statistics, batch history and exports. Missing metrics remain missing; native player IDs are displayed until names are mapped.
+
+**Mac simulations currently use the game's bundled test squads and tactics. Workbench players, tactics, set pieces and condition settings are not yet passed to the engine. Mac `.fm` and `.fmf` import/export are not implemented.** This is an original-engine baseline milestone, not full Windows feature parity.
+
+## Build and run on Mac
+
+Requires macOS 14+, Apple Silicon and Apple Command Line Tools. Simulation additionally requires the user's complete supported FM27 installation.
+
+```sh
+git clone https://github.com/winner0007/fm-tactics-lab.git
+cd fm-tactics-lab
+bash macos/scripts/check.sh
+bash macos/scripts/build.sh
+open 'macos/dist/FM Tactics Lab 0.4.app'
+```
+
+Open the engine page, set the starting seed and match count, then select **开始原版模拟**. The host checks the exact supported `27.0.0.2493426` arm64 binary hash before every run; other builds are rejected. App bundles are built locally into `macos/dist/`, not committed to Git. Game binaries, resource archives, PKM inputs, saves and local logs are excluded.
+
+Validation: 34 core checks; 9 native-engine regression matches including repeated and boundary seeds; 11 invalid/incomplete-result checks; 5 real matches through the app producing 200 player records, with persistence verified. These checks do not establish equivalence to every career-match condition.
+
+See the [Mac guide](macos/README.md), [Mac changelog](macos/CHANGELOG.md), [engine validation and scope](macos/docs/MAC_ENGINE_STATUS.md) and [porting roadmap](macos/docs/PORTING.md). Next: bind and read back custom squads, tactics and set pieces, then extend player identities/statistics and save/FMF support.
+
+## Upstream Windows guide
+
+The remainder preserves the Windows guide from upstream v1109.3. EXE downloads, career-save matches and FMF capabilities below refer to Windows. For current Mac capabilities, use the scope above and the Mac guide.
 
 **Test your tactics locally with the original FM27 match engine.**
 

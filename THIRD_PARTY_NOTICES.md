@@ -13,3 +13,11 @@ The v1103.2, v1106 and v1108.5 EXEs are separate desktop distributions. Each inc
 The MIT grant covers the tool code. It does not relicense game-related inputs, extracted comparison bytes, third-party components or their trademarks. CPython and its bundled components retain the licenses shipped in the runtime. Windows SDK, MSVC and .NET Framework are build prerequisites and are not included in the source archive.
 
 Career-save import uses fmsave 0.9.0 (MIT) and backports.zstd 1.8.0 (PSF-2.0 with the bundled Zstandard license). The public source lists these packages as dependencies. Desktop builds include the packages and their license files.
+
+## Native Mac extension in this fork
+
+The `macos/` directory adds Swift/SwiftUI tool code, an Objective-C++ match host, an arm64 ABI bridge, tests and build scripts under the same MIT license. The upstream author and contributors retain attribution for the original FM Tactics Lab project and Windows implementation.
+
+The Mac host loads the complete original engine and reads resources and the bundled test fixture from the user's own supported FM27 installation. No game binary, extracted executable slice, disassembly, resource archive, PKM fixture or career save is included in the public Mac source or app bundle. SHA-256 fingerprints and version-specific adapter offsets identify the supported installed build; they do not grant rights to game components. Local research files, runtime logs and build products are ignored by Git.
+
+The Mac client uses Apple system frameworks and does not bundle a Python or Node runtime. Apple Command Line Tools are a build prerequisite. This fork is an independent extension, not an official Sports Interactive or SEGA product.

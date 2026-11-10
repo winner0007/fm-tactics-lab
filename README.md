@@ -1,6 +1,56 @@
-# FM 战术实验室 · FM Tactics Lab
+# FM 战术实验室 · Mac 原生扩展
 
 **简体中文** | [English](README.en.md)
+
+本仓库是 [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab) 的 fork，在保留上游 Windows 实现的基础上，新增 `macos/` 下的 SwiftUI 客户端与 Mac 原版比赛宿主。当前 Mac 版本为 **0.4**，上游基线为 **v1109.3 / [6cb32bf](https://github.com/lqf0624/fm-tactics-lab/commit/6cb32bfab936d1ce2a0558a70f489537edfb5442)**。
+
+## 原项目是什么
+
+FM Tactics Lab 是一款使用本机 FM27 原版详细比赛引擎的战术实验工具。上游 Windows 版提供双阶段战术板、球员与阵容配置、定位球、存档对战、FMF 战术读写，以及按种子批量运行、A/B 战术对比和比赛统计。原项目将配置、比赛宿主和结果分析连接起来，方便在固定条件下重复测试战术。
+
+上游采用 Web 编辑器、Python 本地服务、C# 桌面启动器和 Windows C++ 比赛宿主。Mac 的 Mach-O、arm64 ABI、资源目录和线程上下文不同，因此本 fork 新增独立的 Mac 实现。**原项目的设计与 Windows 实现归功于上游作者和贡献者**；工具代码继续使用 [MIT 许可证](LICENSE)。
+
+## 本 fork 新增与优化
+
+| 方向 | Mac 0.4 已实现 |
+| --- | --- |
+| 原生应用 | SwiftUI / AppKit 界面，macOS 14+、Apple Silicon；本地自动保存、撤销／重做、方案导入导出 |
+| 战术工作台 | 有球／无球双阶段编辑、共享首发、拖动重叠自动换位、对照快照与差异提醒 |
+| 阵容与能力 | 按全队、位置或个人应用随机／业余／半职业／职业／享誉国内／洲际／国际预设；每人、每项在档次区间内独立抽样 |
+| 游戏式配置流程 | 球队指令、球员指令、定位球主罚顺序与职责排序、左右侧配置、候补递补，以及状态／磨合／性格／关系记录 |
+| 安装发现 | 自动查找 Steam 游戏库、应用程序目录与外置磁盘，找不到时再指定位置 |
+| Mac 原版引擎 | 已接通限定版本的资源加载、测试 PKM、比赛准备、自然完赛和基础统计；支持 1 / 5 / 10 / 20 场及随机种子 |
+| 结果与图表 | 累计 xG 曲线、球队对比、球员基础统计、历史批次、CSV / JSON 导出；未知指标留空 |
+| 运行校验 | 每场独立进程、版本指纹、超时与取消、自然终场和球队／球员统计合计校验；失败不计入有效结果 |
+
+**当前 Mac 模拟使用游戏自带测试阵容和战术。工作台自定义球员、战术、定位球及状态配置尚未写入原版引擎，也不支持 Mac 端 `.fm` / `.fmf` 导入导出。** 原版宿主已跑通，不代表已完整移植 Windows 版功能。能力档次区间是实验预设，不是官方 CA／声望换算；球员姓名暂按原版 ID 显示。
+
+## Mac 构建与使用
+
+需要 macOS 14+、Apple Silicon 和 Apple Command Line Tools；原版模拟还需要用户本机完整安装的、适配版本的 FM27。
+
+```sh
+git clone https://github.com/winner0007/fm-tactics-lab.git
+cd fm-tactics-lab
+bash macos/scripts/check.sh
+bash macos/scripts/build.sh
+open 'macos/dist/FM Tactics Lab 0.4.app'
+```
+
+在「引擎与接入」设置起始种子与场数，点击「开始原版模拟」。当前适配 `27.0.0.2493426` 的指定 arm64 二进制，每次运行校验 SHA-256，其他构建会拒绝运行。构建产物位于本地 `macos/dist/`，不存入 Git；GitHub 源码不包含游戏引擎、资源包、PKM、存档或本机运行日志。
+
+- [Mac 完整使用与构建说明](macos/README.md)
+- [Mac 0.4 更新记录](macos/CHANGELOG.md)
+- [原版引擎验证、统计范围与适配依据](macos/docs/MAC_ENGINE_STATUS.md)
+- [后续接入路线](macos/docs/PORTING.md)
+
+当前验证：34 项核心检查通过；9 场原版引擎回归通过，包括同种子复跑、不同种子、边界种子；11 类无效／不完整结果检查通过；应用内 5 场连续比赛生成 200 条球员记录，持久化恢复一致。证据生成方式见 Mac 文档，原始本机证据不上传。上述验证不代表与职业生涯手动比赛条件完全等价。
+
+后续重点是自定义阵容、战术与定位球的原生写入和回读，然后接入姓名、更多球员指标、存档与 FMF。
+
+## 上游 Windows 使用说明
+
+以下保留基于上游 v1109.3 的 Windows 使用说明。EXE 下载、职业生涯存档对战与 FMF 支持属于上游 Windows 版；Mac 当前功能以本页上方及 `macos/README.md` 为准。
 
 **用原版比赛引擎，在本机批量测试你的战术。**
 
