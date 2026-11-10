@@ -1,108 +1,56 @@
-# Mac 接入与优化路线
+# 接手 Mac 版开发
 
-## 0.4 实测进展
+## 当前做到哪里
 
-原版 arm64 宿主已完成 ICU、资源包、PKM 输入、TLS 上下文、比赛准备、逐步运行和自然终场；9 场命令行回归通过。应用可运行内置基线的多种子批次，输出真实球队与球员基础统计。下一项核心工作是将工作台自定义阵容、战术、定位球写入原版对象并逐项回读，不能把内置测试输入的结果用于评价工作台方案。详见 [实测记录](MAC_ENGINE_STATUS.md)。
+0.5 已能把双方球员、战术和定位球交给本机 FM27 原版引擎，完成自然比赛并读取结果。存档导入、批量报告和固定阵容联赛已接通。上游 Windows 代码保留在原目录，Mac 实现在 `macos/`。
 
-## 已确认的事实
+当前只适配 FM27 `27.0.0.2493426` 的指定 arm64 二进制；引擎指纹、字段和 ABI 依据在 [实测记录](MAC_ENGINE_STATUS.md)。游戏更新后要重新验证，不能只改版本字符串。
 
-截至 2026-11-10，上游 `6cb32bf` 的架构是 HTML/CSS/JS 编辑器 → Python 本地 HTTP 服务与批次管理 → Windows C++ 宿主 → 本机 FM27 `game_plugin.dll`。`Launcher.cs` 负责 Windows 启动与托盘。
+## 代码入口
 
-关键源码依据：
-
-| 位置 | 结论 |
+| 要改什么 | 从哪里看 |
 | --- | --- |
-| `native/desktop_host.cpp` | 直接使用 `windows.h`、`LoadLibraryExW`、`VirtualAlloc`、Windows 进程/桌面等设施；游戏函数入口和对象字段依赖指定构建。 |
-| `native/profile_metadata.json` / `scripts/generate_profile.py` | 校验 PE 结构、Windows x64 机器类型及函数区间摘要，无法拿来校验 Mach-O / arm64。 |
-| `scripts/build_native.py` | 要求 MSVC 与 Windows SDK，输出 `FM27Simulator.exe`。 |
-| `src/desktop_server.py` / `src/fm27_tactics_server.py` | 启动要求原生 EXE、初始快照与目录 JSON；引擎初始化与编辑器模块导入耦合。 |
-| `scripts/prepare_private.py` | 公开源码缺少 `catalog.json`、PKM 和初始快照，需要从校验通过的指定旧发行包或已有工作区补齐。 |
-| `src/tactics_ui/batch.js` | 逐场 CSV 包含方案、种子、比分等，但缺少对手、主客场和 xG 列。Mac v0.1 已直接兼容此实际格式。 |
+| 球员、战术和原版功能目录 | `Sources/TacticsCore/Models.swift`、`NativeCatalog.swift`、`GameTactics.swift`、`GameSetPieces.swift` |
+| 随机属性与个人资料 | `AbilityPresets.swift`、`NativeProfile.swift` |
+| 送入比赛的配置与校验 | `NativeScenario.swift`、`native/EngineScenario.h`、`EngineSetPieces.h` |
+| Mac 引擎启动与自然完赛 | `native/EngineRuntimeProbe.mm`、`EngineABI_arm64.S` |
+| 编辑哪支球队、自动保存和撤销 | `Sources/TacticsLabMac/Store.swift`、`LeagueStore.swift`、`EditingTeamBar.swift` |
+| 存档读取 | `runtime/SaveReader.py` → 上游 `src/desktop_save_*`；Swift 侧 `SaveReaderJob.swift`、`SaveImport.swift` |
+| 方案库与 FMF | `TeamPreset.swift`、`TeamPresetStore.swift`、`FMF.swift`、`TacticFileJob.swift`、`native/EngineTactics.h` |
+| 联赛排程与排名 | `LeagueSimulation.swift`；界面 `LeagueView.swift` |
+| 统计与报告 | `OriginalMatchReport.swift`、`BatchExport.swift`、`LeagueExport.swift` |
 
-本机只读检查确认：FM27 应用版本 `27.0.0.2493426`；`game_plugin.bundle/Contents/MacOS/game_plugin` 为 x86_64 + arm64 通用 Mach-O bundle。动态依赖包含 Steam、EOS、PlayFab、C++ 运行库及 Apple frameworks。导出符号筛查找到 Unity 插件入口，未找到可直接复用的详细比赛入口；这不证明内部功能不存在。
+阵型、角色、指令锁定和定位球任务参照上游 v1109.3（`6cb32bf`）。修改个人指令策略后运行 `scripts/sync-native-policy.py`，保持 Swift 编辑器与原生宿主的校验一致。
 
-上游参考版本为 `27.0.0+2493426`。版本号对应只是定位线索；Windows 与 Mac 的 ABI、类布局、函数位置、线程局部状态和初始化仍需独立确认。
+## 球队和实验的数据关系
 
-## 推荐架构
+`Workspace` 保存普通对战双方；`LeagueSetup.teams` 中每个 `LeagueTeam` 保存独立的 `plan`。`LabStore.editing` 和 `change` 统一处理当前球队，战术页和球员页不能再直接改全局 `workspace`。每支联赛球队有自己的撤销记录。
 
-```text
-原生 SwiftUI 工作台
-  ├── Swift 数据模型 / 文件 / 规则提醒 / 结果分析
-  ├── 只读解析进程：存档与 FMF（待接入）
-  └── 实验调度器（内置基线已接入，自定义输入待适配）
-        └── 独立 macOS 原生宿主进程（内置基线已实现）
-              └── 用户本机 FM27 游戏引擎与资源
-```
+“复制普通对战球队”只复制一次。联赛编辑直接更新选中球队，球队名和战术名分开；随机单队不能影响其他队、首发身份或战术。
 
-只做 Mac，优先 SwiftUI：现有工具链可直接构建，首版应用无额外运行时。若以后需要同时维护 Windows UI，可以重新评估共用 Web 编辑器与 WKWebView；原 Web UI 的私有目录数据问题仍需解决。
+`LeagueRun` 保存开赛时的整套配置和固定赛程，运行、续跑和报告都读它，不读正在编辑的 `leagueSetup`。普通批次同样保存 `NativeScenario`。目录、文件格式、导出和恢复过程见 [数据说明](DATA_FORMATS.md)。
 
-Mac v0.1 起步于本地编辑分析客户端，v0.4 已加入限定版本的原版内置基线模拟。它在上游仓库独立增量开发，保留上游以便跟踪更改，复用了双阶段编辑、对照实验、CSV 交换等产品和数据工作流。未来将草图转换成上游 scenario 时必须建立显式、带版本的映射；当前任务名和 1–5 档指令不能原样当作 FM 位标志。
+## 怎样验证
 
-## 第一阶段：把实际阵容和战术带进来
+在仓库根目录运行 `bash macos/scripts/check.sh` 和 `bash macos/scripts/build.sh`。存档读取组件需要 Python 3.11+ 构建，发布应用无需用户安装 Python。
 
-目标是减少手工录入，让编辑器服务用户自己的存档。
+- `check-engine.py`：用安装包内置阵容检查 9 场原版比赛、同种子复现、边界种子和取消。
+- `check-workbench.sh`：验证 12 阵型及状态、盯人、队长、定位球变化。依次传绝对路径：输出目录、宿主、`fm.app`；可再传存档阵容和目录 JSON 跑完整联赛。
+- `CheckLeagueReport.swift`：复核整赛季配置、身份、种子、排名和汇总，拒绝被改动的报告。
+- `check-tactic-files.sh`：12 阵型经原版 FMF 写入／归档读取／战术解析再导入，保留中文名、职责与附加位；畸形归档拒绝。
+- `check-fmf-archives.py`：用 SaveReader 构建虚拟环境运行，核对上游 Windows 封装兼容性与原版压缩归档读取；参数同上，为输出目录、宿主和 `fm.app`。
+- 应用参数 `--scenario-smoke <目录> --data-dir <目录>/data`：检查普通批次、球队编辑隔离、单队随机、联赛停止续跑、配置快照、恢复和截图。可追加 `--save-smoke <存档路径>` 验证打包后的读取组件。
 
-1. 独立抽取上游 `desktop_save_*` 和 `fmsave` 的只读解析能力，避免导入时触发 Windows 引擎初始化。
-2. 在本机 `.fm` 样本上验证球队、球员 ID、属性、位置熟练度和首发；记录哪些字段缺失，禁止用默认值默默冒充存档值。
-3. 补齐合法可用的目录与角色映射，保留原始、尚不理解的 FMF 字段。上游 Python FMF 模块能写归档外壳，但完整 TAC 战术载荷仍依赖游戏序列化，不能把归档读写当成完整战术编辑支持。
-4. 用导入 → 原样导出 → 游戏内载入验证不丢字段，再逐项验证编辑后的指令。优先 Apple Silicon。
+测试必须用隔离目录。最终本机证据放在 `.build/evidence-v05/`；不提交真实存档、导入阵容、日志或反汇编。游戏文件只读，运行中的比赛使用独立进程。
 
-验收：真实存档字段抽查通过；FMF 回写由游戏实际接受；不改动源存档。
+## 下一步
 
-## 第二阶段：Mac 原版引擎可行性验证
+1. 原始 `.dat` 数据库：为快速选择真实球队与联赛解析初始阵容和赛事规则，不能用初始化 JSON 代替。目前支持新开档立即保存的 `.fm`。定位球套路 FMF 交换也待适配。
+2. 更多原版统计：先核实字段的产生与读取位置，再加入助攻、分钟、评分等列；缺失项保持缺失。
+3. 原生 A/B 队列：固定双方阵容，用相同种子分别运行两套战术，保留各自结果和配对关系。
+4. 临场策略与跨场状态：换人、改阵、疲劳、伤停需要独立的原版调用验证。
+5. 更完整的联赛规则：附加赛、分组、公平竞赛分和行政扣分不能套用普通积分榜排序。
 
-先证明“一场正确的比赛”，再开发批量 UI。
+战术理解、认同、对手情报和球员关系尚未接入。体能、比赛状态、疲劳原值、士气、凝聚力及七项性格已有映射。当前比赛仍是固定条件实验，不能将它描述成完整职业生涯模拟。
 
-1. 以本机确切引擎构建和架构为键，建立 Mac 专属版本指纹；不能套用 Windows RVA 或字段偏移。
-2. 识别资源路径、Steam 生命周期、插件初始化、线程上下文、比赛输入构建、准备、详细推进和自然结束；单独处理 macOS C++ ABI。
-3. 建立进程隔离、超时终止和可审计日志。选择何种加载和签名策略应以实际依赖和系统验证为准。
-4. 验证首发、属性、双阶段站位和指令的原生回读；记录自然终场、比分、统计与失败原因。
-5. 同输入同种子重复运行，验证宿主独立运行和复用。跨平台不预设逐球一致，浮点与随机状态需单独核对。
-
-验收：固定样本稳定完赛，输入回读和统计检查通过，失败不计入成功结果。若加载或初始化路径仍不明确，保持功能不可用状态，避免输出替代模拟数据。
-
-只有这个阶段成功后，才适合估算完整 Mac 引擎开发工期。该部分的主要成本是适配和验证，不是制作界面。
-
-## 第三阶段：批量实验与结果可信度
-
-- 原子任务清单、配置哈希、引擎版本、种子、对手、主客场和开赛状态绑定在每条结果上。
-- 多进程队列，独立失败隔离，取消和断点恢复；失败保留现场，不悄悄重跑并替换不利样本。
-- 基线与候选用相同种子、固定对手、主客场互换；同时显示有效/失败/未配对数量。
-- 优先净胜球与 xG 差，结合射门质量、失球和体能；在 UI 中展示区间和样本数。
-- 按比赛构建版本分组，避免更新游戏后直接混合新旧结果。
-
-验收：取消后恢复不重复、不丢比赛；崩溃进程可归因；成对输入与结果可复查。
-
-## 第四阶段：在此基础上做真正有用的优化
-
-| 改进方向 | 具体做法 | 为什么有用 |
-| --- | --- | --- |
-| 阵容适配 | 按真实位置熟练度和角色要求解释短板；提示候选替补和角色变化 | 让战术适应自己的队员，避免只比较通用示例阵容 |
-| 可解释试验 | “高位防线是否适合这批中卫” → 只改防线，其余冻结 | 看得清收益来自哪一项变化 |
-| 分阶段搜索 | 少量种子粗筛候选，再用新种子和未参与筛选的对手确认 | 降低计算量，减少挑中偶然好成绩 |
-| 多对手稳健性 | 高压迫、低位防守、边路、直接长传等分层对手与主客场轮换 | 识别只对某一类对手有效的方案 |
-| 实际赛季条件 | 在标准化实验之外逐步支持体能、疲劳、磨合、士气情境 | 避免把满状态实验直接当成周中比赛建议 |
-| 可复查报告 | 完整输入快照、参数差异、环境版本、失败率和导出 | 后续能复现与解释，而非只显示排行榜 |
-
-## 三条可选运行路线
-
-原生 Mac 引擎是最终目标。若用户将来希望优先获得真实批量结果，可另做 Mac 前端连接受控 Windows 工作节点；需要实际 Windows 主机和完整引擎环境，目前没有实现。Wine / CrossOver 只宜作为验证候选：上游依赖私有桌面、DLL 加载和游戏平台生命周期，不能保证容器启动就等于模拟正确。Apple Silicon 上的 Rosetta 也不会把 Windows DLL 变成可直接加载的 Mac bundle。
-
-## 结论边界
-
-上游文档自己区分“详细比赛计算”与“职业生涯完整流程”；已有内部宿主一致性验证不能证明与游戏内手打完全等价。Mac 版沿用这一边界，不提供未经验证的一致率，也不把规则提醒称为引擎预测。
-
-参考：[上游构建说明](https://github.com/lqf0624/fm-tactics-lab/blob/main/docs/DEVELOPMENT.md)、[一致性说明](https://github.com/lqf0624/fm-tactics-lab/blob/main/docs/SIMULATION_FIDELITY.md)、[第三方范围](https://github.com/lqf0624/fm-tactics-lab/blob/main/THIRD_PARTY_NOTICES.md)。
-
-
-## v0.2：状态、性格与关系的取舍
-
-疲劳与即时体能分开：前者记录累积负荷，后者记录开赛时身体状态；比赛状态（sharpness）再单独记录。标准实验保留统一条件，自定义情境才展示这些差异。原项目的 `fatigue_raw` 是 0–65535 的原始字段，公开代码没有提供可验证的百分比换算，因此本版用人工标签记录，未编造映射。
-
-FM27 的战术执行力由球员能力、战术理解、球员认同和对手情报构成。战术理解与团队凝聚力不是同一变量。本版保留分项手动输入，默认关闭执行力实验，不合成一个伪精确的「默契总分」。参考 [FM27 官方训练与执行力说明](https://www.footballmanager.com/fm27/features/fm27-training-and-tactical-effectiveness)。
-
-性格值得保留：上游 `fm27_profiles.py` 已列出职业素养、忠诚、体育精神、情绪控制、抗压、雄心、适应性七项。Mac 版支持手动记录、未知值和完整快照。上游存在字段不代表 Mac 调用链已验证，当前不会让这些数字参与比赛计算。
-
-关系值得作为背景展示，但目前没有证据支持直接将「搭档熟悉」换算为进球或能力加成。本版先记录配合、冲突、指导关系及依据。以后接入存档时应区分引擎实际使用的字段、游戏界面呈现和用户自己的观察，避免重复计算与球员认同／凝聚力的影响。参考 [FM27 官方执行力指南](https://www.footballmanager.com/the-dugout/tactical-effectiveness-understanding-fm27s-key-new-feature)。
-
-Mac 文件适配与比赛宿主是两个验收项。0.2 完成了常见安装路径、外置库、符号链接、应用包布局和依赖文件的只读识别，当时尚未实现比赛宿主。0.4 已完成内置测试输入的初始化、详细推进与自然完赛；自定义配置的原生写入与回读仍待接入。
+FMF 对照上游 `native_tactic_export.h`、`native_tactic_import.h`、`native_fmf_probe.h` 和 `src/fm27_fmf.py`。Mac 写入 `0x4a8d728`、读取 `0x4856b6c`，计划在 manager + `0x1800`，流虚表读写槽为 6（Windows 为 5），返回值遵循 Itanium ABI。FMF 归档由原版驱动读取，支持压缩条目；Swift 只封装原版生成的 TAC。职责与未命名球队位按上游规则保留，未知个人指令及无法表达的冲突拒绝。

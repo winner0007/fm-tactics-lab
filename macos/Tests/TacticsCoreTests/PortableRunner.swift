@@ -19,7 +19,20 @@ func XCTAssertThrowsError<T>(_ expression: @autoclosure () throws -> T, _ messag
         let suite = CoreTests()
         let workflow=WorkflowTests()
         let stats=StatisticsWorkflowTests()
+        let native=NativeWorkflowTests()
+        let files=TacticFileTests()
         let tests: [(String,() throws -> Void)] = [
+            ("Full independent named team snapshots",files.testTeamPresetRetainsFullTeamWithoutOpponent),
+            ("FMF phase mapping, duty and preserved team data",files.testFMFPhaseMappingAndTeamIsolation),
+            ("FMF unknown and conflicting data rejected",files.testFMFRejectsUnrepresentableInputs),
+            ("All upstream formations and contextual roles",native.testFormationsAndRoleContexts),
+            ("Upstream phase cell swap",native.testDragMatchesUpstreamCellsAndKeepsOtherPhase),
+            ("Scenario determinism and marking targets",native.testScenarioDeterminismAndTargets),
+            ("Native set-piece validation",native.testNativeSetPieceValidationAndDefaultIDs),
+            ("Position profiles and independent hidden data",native.testPositionSpecificRandomAndHiddenIndependence),
+            ("Odd/even round-robin schedules",native.testRoundRobinAndScheduleValidation),
+            ("Spanish tie reapplication and unresolved rank",native.testSpanishTieReapplicationAndUnresolvedTies),
+            ("Imported edits and input boundaries",native.testImportedEditsAndInputBoundaries),
             ("Tier ranges variability and seeded replay",stats.testTierRangesVariationAndReproducibility),
             ("Extended attributes missing data and candidates",stats.testExtendedAttributesAndLegacyUnknowns),
             ("Set piece priority and substitute fallback",stats.testPersonnelRecoversAfterSubstitutionAndAvoidsDuplicates),

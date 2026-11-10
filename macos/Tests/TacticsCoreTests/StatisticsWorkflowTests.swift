@@ -18,7 +18,11 @@ final class StatisticsWorkflowTests:XCTestCase {
             let ids=a.players.map(\.id),slots=a.tactic.slots
             a.applyAbility(tier,scope:.team,using:&ra);b.applyAbility(tier,scope:.team,using:&rb)
             XCTAssertEqual(a,b);XCTAssertEqual(a.players.map(\.id),ids);XCTAssertEqual(a.tactic.slots,slots)
-            XCTAssertTrue(a.players.allSatisfy { p in PlayerAttribute.all.allSatisfy {tier.range.contains(p.attributes[$0.id] ?? 0)} })
+            XCTAssertTrue(a.players.allSatisfy { p in PlayerAttribute.all.allSatisfy {(1...20).contains(p.attributes[$0.id] ?? 0)} })
+            XCTAssertTrue(a.players.allSatisfy { p in Attribute.allCases.allSatisfy {tier.range.contains(p.value($0))} })
+            XCTAssertTrue(a.players.dropFirst().allSatisfy {($0.attributes["reflexes"] ?? 99)<=5})
+            XCTAssertTrue(Set(a.players.map{$0.attributes["consistency"]!}).count>1)
+            XCTAssertTrue(Set(a.players.map{$0.background!.traits["职业素养"]!}).count>1)
             XCTAssertTrue(Set(a.players.map{$0.attributes["pace"]!}).count>1)
             XCTAssertTrue(a.players.allSatisfy{Set($0.attributes.values).count>1})
             _ = try a.validated()

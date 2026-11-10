@@ -13,7 +13,7 @@ final class OriginalMatchJob: @unchecked Sendable {
         cancelled=true
         if let p=process,p.isRunning {p.terminate()}
     }
-    func run(helper:URL,app:URL,seed:UInt32,log:URL) throws -> OriginalMatchReport {
+    func run(helper:URL,app:URL,seed:UInt32,log:URL,scenario:NativeScenario?=nil) throws -> OriginalMatchReport {
         try FileManager.default.createDirectory(at:log.deletingLastPathComponent(),withIntermediateDirectories:true)
         try Data().write(to:log)
         let stderr=log.deletingPathExtension().appendingPathExtension("stderr.txt")
@@ -21,6 +21,13 @@ final class OriginalMatchJob: @unchecked Sendable {
         let output=try FileHandle(forWritingTo:log),errors=try FileHandle(forWritingTo:stderr)
         defer {try? output.close();try? errors.close()}
         let p=Process();p.executableURL=helper;p.arguments=[app.path,"--seed",String(seed)]
+        if let scenario {
+            let url=log.deletingLastPathComponent().appendingPathComponent("configuration.json")
+            if FileManager.default.fileExists(atPath:url.path) {
+                guard try Data(contentsOf:url)==scenario.data else {throw LabError("该比赛目录已有其他配置，拒绝覆盖实验输入。")}
+            } else {try scenario.data.write(to:url,options:.atomic)}
+            p.arguments! += ["--scenario",url.path]
+        }
         p.standardOutput=output;p.standardError=errors
         lock.lock()
         if cancelled {lock.unlock();throw LabError("已取消比赛。")}
@@ -34,6 +41,6 @@ final class OriginalMatchJob: @unchecked Sendable {
         lock.lock();process=nil;let stopped=cancelled;lock.unlock()
         try output.synchronize()
         if stopped {throw LabError("运行已停止；已完成场次与本场日志均已保留。")}
-        return try OriginalMatchReport.parse(Data(contentsOf:log),exitCode:p.terminationStatus,expectedSeed:seed)
+        return try OriginalMatchReport.parse(Data(contentsOf:log),exitCode:p.terminationStatus,expectedSeed:seed,scenario:scenario)
     }
 }

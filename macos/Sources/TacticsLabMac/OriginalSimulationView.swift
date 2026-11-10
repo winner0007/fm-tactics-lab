@@ -9,14 +9,16 @@ struct OriginalSimulationCard:View {
             HStack {
                 Label("FM 原版比赛模拟",systemImage:"play.circle").font(.system(size:18,weight:.semibold))
                 Spacer()
-                Chip(text:store.originalMatch == nil ? "内置基线可运行" : "已验证自然完赛")
+                Chip(text:store.originalMatch == nil ? "工作台与基线测试" : "已验证自然完赛")
             }
-            Text("使用本机 FM 原版引擎和游戏自带测试阵容。可更换随机种子；工作台的战术、球员与定位球配置尚未应用到这组比赛。").font(.system(size:12)).foregroundStyle(Theme.muted).fixedSize(horizontal:false,vertical:true)
+            Text("使用本机 FM 原版引擎。工作台模式会保存并回读双方配置；内置基线用于检查引擎运行。").font(.system(size:12)).foregroundStyle(Theme.muted).fixedSize(horizontal:false,vertical:true)
+            Toggle("使用工作台双方配置",isOn:$store.useWorkbench).disabled(store.runningOriginal)
             HStack(spacing:15) {
                 Text("起始种子").font(.system(size:12))
-                TextField("0–4294967295",text:$store.originalSeed).frame(width:130).textFieldStyle(.roundedBorder)
-                Picker("比赛场数",selection:$store.originalCount) {ForEach([1,5,10,20],id:\.self){Text("\($0) 场").tag($0)}}.frame(width:145)
-                Button(store.runningOriginal ? "原版引擎计算中…" : "开始原版模拟",action:store.runOriginalMatches).buttonStyle(.borderedProminent).disabled(store.runningOriginal || !store.engine.filesReady || store.engineSearching)
+                TextField("0–4294967295",text:$store.originalSeed).frame(width:130).textFieldStyle(.roundedBorder).disabled(store.runningOriginal)
+                Text("场数")
+                TextField("1–2000",value:$store.originalCount,format:.number.grouping(.never)).frame(width:80).textFieldStyle(.roundedBorder).disabled(store.runningOriginal)
+                Button(store.runningOriginal ? "原版引擎计算中…" : "开始原版模拟",action:store.runOriginalMatches).buttonStyle(.borderedProminent).disabled(store.editedLeagueTeam != nil || store.runningOriginal || store.leagueRunning || !store.engine.filesReady || store.engineSearching)
                 if store.runningOriginal {
                     ProgressView().controlSize(.small)
                     Button("停止",action:store.cancelOriginalMatches)
@@ -24,6 +26,7 @@ struct OriginalSimulationCard:View {
                 Spacer()
                 if store.originalLogFolder != nil {Button("查看运行日志",action:store.revealOriginalLogs)}
             }.disabled(store.checkingNative)
+            if store.editedLeagueTeam != nil {Text("当前编辑的是联赛球队，请到“联赛实验”运行；普通对战需先切换编辑范围。").font(.caption).foregroundStyle(Theme.muted)}
             if store.runningOriginal {Text(store.originalProgress).font(.system(size:12)).foregroundStyle(Theme.green)}
             Text("每场使用独立进程；多场依次递增种子。适配版本：27.0.0.2493426 / Apple Silicon，其他二进制版本会停止运行。").font(.system(size:11)).foregroundStyle(Theme.muted)
             if let report=store.originalMatch {
@@ -50,7 +53,7 @@ struct OriginalSimulationCard:View {
                     }
                 }.chartForegroundStyleScale(["测试主队":Theme.green,"测试客队":Color.orange])
                     .chartXScale(domain:0...max(90,report.timeline.last?.minute ?? report.minute)).chartXAxisLabel("累计比赛分钟（含上下半场补时）· 约每分钟采样").frame(height:185)
-                Text("球队页记录比分、xG、控球率、射门、射正、传球及红黄牌；球员页记录已核验的基础统计。姓名暂按原版球员 ID 显示，评分、助攻等未接入的字段留空。").font(.system(size:11)).foregroundStyle(Theme.muted)
+                Text("球队页记录比分、xG、控球率、射门、射正、传球及红黄牌；球员页可切换本队与对手。工作台模式使用自定义姓名；未验证的统计留空。").font(.system(size:11)).foregroundStyle(Theme.muted)
             }
         }
     }

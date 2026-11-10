@@ -78,12 +78,19 @@ public struct MatchConditions:Codable,Equatable {
     public var condition = 100
     public var sharpness = 100
     public var fatigue:FatigueLevel = .fresh
+    public var fatigueRaw:UInt16? = nil
     public var morale = 20
     public var cohesion = 80
     public var executionEnabled = false
     public var understanding = 80
     public var buyIn = 80
     public var oppositionKnowledge = 80
+    public init() {}
+}
+
+public struct MarkTarget:Codable,Equatable {
+    public var playerID:UUID? = nil
+    public var position:String? = nil
     public init() {}
 }
 
@@ -96,20 +103,44 @@ public struct PlayerBackground:Codable,Equatable {
 }
 
 public struct TacticalConfiguration:Codable,Equatable {
+    public var nativeExtraTeamBits:String? = nil
+    public var nativeDuties:[String:String]? = nil
+    public var nativeMentality:Int? = nil
+    public var nativeTeam:[Int:UInt32]? = nil
+    public var nativePlayers:[String:[Int:UInt32]]? = nil
+    public var markTargets:[String:MarkTarget]? = nil
+    public var gameSetPieces:GameSetPieces? = nil
     public var team:[String:String] = [:]
     public var players:[String:[String:String]] = [:]
     public var setPieces:[String:SetPieceRoutine] = [:]
     public var conditions = MatchConditions()
     public init() {}
     public func routine(_ kind:SetPieceKind,_ side:SetPieceSide) -> SetPieceRoutine { setPieces[Self.key(kind,side)] ?? .initial(kind) }
+    public var legacyInstructionLines:[String] {
+        let teamLines=InstructionDefinition.team.compactMap {d in team[d.id].flatMap{$0==d.defaultValue ? nil:d.title+"："+$0}}
+        let playerLines=players.keys.sorted().flatMap {key in InstructionDefinition.player.compactMap {d in players[key]?[d.id].flatMap{$0==d.defaultValue ? nil:key+" · "+d.title+"："+$0}}}
+        return teamLines+playerLines
+    }
+    public var hasLegacyInstructions:Bool {!legacyInstructionLines.isEmpty}
     public static func key(_ kind:SetPieceKind,_ side:SetPieceSide) -> String { kind.rawValue+":"+(kind == .penalty ? "统一" : side.rawValue) }
     public static func playerKey(_ slot:Int,_ phase:Phase) -> String { "\(slot):\(phase.rawValue)" }
 
     public func validate(playerIDs:Set<UUID>) throws {
+        try FMFTacticFields.validateExtras(nativeExtraTeamBits)
+        guard (nativeDuties ?? [:]).allSatisfy({FMFTacticFields.duties.contains(UInt64($0.value) ?? UInt64.max)}) else {throw LabError("未知角色职责任务位。") }
+        try gameSetPieces?.validate(ids:playerIDs,complete:false)
+        guard nativeMentality == nil || (1...7).contains(nativeMentality!) else {throw LabError("比赛心态无效。")}
+        for (id,value) in nativeTeam ?? [:] {
+            guard NativeCatalog.teamInstructions.contains(where:{$0.id==id && $0.options.contains(where:{$0.id==value})}) else {throw LabError("球队指令无效。")}
+        }
+        for (_,values) in nativePlayers ?? [:] {for (id,value) in values {
+            guard NativeCatalog.playerInstructions.contains(where:{$0.id==id && $0.options.contains(where:{$0.id==value})}) else {throw LabError("个人指令无效。")}
+        }}
         func validOptions(_ values:[String:String],_ definitions:[InstructionDefinition]) -> Bool {
             values.allSatisfy { key,value in definitions.contains { $0.id==key && $0.options.contains(value) } }
         }
         let playerKeys=Set((0..<11).flatMap { slot in Phase.allCases.map { Self.playerKey(slot,$0) } })
+        guard Set((nativeDuties ?? [:]).keys).isSubset(of:playerKeys),Set((nativePlayers ?? [:]).keys).isSubset(of:playerKeys),Set((markTargets ?? [:]).keys).isSubset(of:playerKeys),(markTargets ?? [:]).values.allSatisfy({target in target.position == nil || NativeCatalog.positions.contains(where:{$0.id == target.position})}) else {throw LabError("个人指令位置无效。")}
         guard validOptions(team,InstructionDefinition.team), players.allSatisfy({ key,values in playerKeys.contains(key) && validOptions(values,InstructionDefinition.player.filter { key.hasSuffix($0.section=="有球" ? Phase.possession.rawValue : Phase.defending.rawValue) }) }) else { throw LabError("球队或球员指令含有不支持的选项。") }
         let keys=Set(SetPieceKind.allCases.flatMap { kind in SetPieceSide.allCases.map { Self.key(kind,$0) } })
         guard Set(setPieces.keys).isSubset(of:keys) else { throw LabError("定位球方案类型无效。") }

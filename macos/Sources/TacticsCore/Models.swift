@@ -45,6 +45,9 @@ public struct Player: Codable, Equatable, Identifiable {
     public var background: PlayerBackground? = nil
     public var abilityPreset: AbilityTier? = nil
     public var preferredFoot: String? = nil
+    public var nativeAttributes:[Int]? = nil
+    public var nativeProfile:[String:UInt32]? = nil
+    public var sourceIdentity:String? = nil
     public init(name: String, position: String, attributes: [String: Int]) {
         id = UUID(); self.name = name; self.position = position; self.attributes = attributes
     }
@@ -58,25 +61,35 @@ public struct Slot: Codable, Equatable, Identifiable {
     public var defending: Point
     public var assignment: Assignment
     public var defensiveAssignment: Assignment
+    public var possessionRole:String? = nil
+    public var defendingRole:String? = nil
+    public var possessionPosition:String? = nil
+    public var defendingPosition:String? = nil
     public func point(_ phase: Phase) -> Point { phase == .possession ? possession : defending }
     public func task(_ phase: Phase) -> Assignment { phase == .possession ? assignment : defensiveAssignment }
 }
 
 public enum Formation: String, CaseIterable, Identifiable {
-    case fourThreeThree = "4-3-3", fourTwoThreeOne = "4-2-3-1", fourFourTwo = "4-4-2", threeFourTwoOne = "3-4-2-1"
-    public var id: String { rawValue }
-    public var points: [Point] {
+    case fourThreeThree = "4-3-3", fourTwoThreeOne = "4-2-3-1", fourFourTwo = "4-4-2", diamond = "4-4-2 菱形", fourOneFourOne = "4-1-4-1", fourThreeOneTwo = "4-3-1-2", fourTwoFour = "4-2-4", threeFourThree = "3-4-3", threeFourTwoOne = "3-4-2-1", threeFiveTwo = "3-5-2", fiveTwoThree = "5-2-3", fiveFourOne = "5-4-1"
+    public var id:String {rawValue}
+    // The original project's PRESETS, in its goalkeeper/right-to-left slot order.
+    public var positions:[String] {
         switch self {
-        case .fourThreeThree:
-            return [Point(0.5,0.9),Point(0.13,0.69),Point(0.37,0.74),Point(0.63,0.74),Point(0.87,0.69),Point(0.5,0.58),Point(0.32,0.43),Point(0.68,0.43),Point(0.16,0.23),Point(0.5,0.16),Point(0.84,0.23)]
-        case .fourTwoThreeOne:
-            return [Point(0.5,0.9),Point(0.13,0.7),Point(0.37,0.75),Point(0.63,0.75),Point(0.87,0.7),Point(0.35,0.55),Point(0.65,0.55),Point(0.5,0.35),Point(0.16,0.32),Point(0.5,0.14),Point(0.84,0.32)]
-        case .fourFourTwo:
-            return [Point(0.5,0.9),Point(0.13,0.72),Point(0.37,0.76),Point(0.63,0.76),Point(0.87,0.72),Point(0.37,0.51),Point(0.63,0.51),Point(0.83,0.47),Point(0.17,0.47),Point(0.35,0.22),Point(0.65,0.22)]
-        case .threeFourTwoOne:
-            return [Point(0.5,0.9),Point(0.24,0.74),Point(0.5,0.77),Point(0.76,0.74),Point(0.89,0.49),Point(0.38,0.52),Point(0.62,0.52),Point(0.11,0.49),Point(0.32,0.3),Point(0.5,0.13),Point(0.68,0.3)]
+        case .fourThreeThree:return ["GK","DR","DCR","DCL","DL","DMC","MCR","MCL","AMR","AML","ST"]
+        case .fourTwoThreeOne:return ["GK","DR","DCR","DCL","DL","DMR","DML","AMR","AMC","AML","ST"]
+        case .fourFourTwo:return ["GK","DR","DCR","DCL","DL","MR","MCR","MCL","ML","STR","STL"]
+        case .diamond:return ["GK","DR","DCR","DCL","DL","DMC","MCR","MCL","AMC","STR","STL"]
+        case .fourOneFourOne:return ["GK","DR","DCR","DCL","DL","DMC","MR","MCR","MCL","ML","ST"]
+        case .fourThreeOneTwo:return ["GK","DR","DCR","DCL","DL","MCR","MC","MCL","AMC","STR","STL"]
+        case .fourTwoFour:return ["GK","DR","DCR","DCL","DL","MCR","MCL","AMR","AML","STR","STL"]
+        case .threeFourThree:return ["GK","DCR","DC","DCL","MR","MCR","MCL","ML","AMR","AML","ST"]
+        case .threeFourTwoOne:return ["GK","DCR","DC","DCL","WBR","MCR","MCL","WBL","AMCR","AMCL","ST"]
+        case .threeFiveTwo:return ["GK","DCR","DC","DCL","WBR","MCR","MC","MCL","WBL","STR","STL"]
+        case .fiveTwoThree:return ["GK","DCR","DC","DCL","WBR","WBL","MCR","MCL","AMR","AML","ST"]
+        case .fiveFourOne:return ["GK","DR","DCR","DC","DCL","DL","MR","MCR","MCL","ML","ST"]
         }
     }
+    public var points:[Point] {positions.map{NativeCatalog.position($0).point}}
 }
 
 public struct Tactic: Codable, Equatable {
@@ -94,16 +107,19 @@ public struct Tactic: Codable, Equatable {
     public var configuration: TacticalConfiguration? = nil
     public mutating func apply(_ formation: Formation, phase: Phase) {
         for i in slots.indices {
-            if phase == .possession { slots[i].possession = formation.points[i] }
-            else { slots[i].defending = formation.points[i] }
+            let p=formation.positions[i]
+            if phase == .possession { slots[i].possession=formation.points[i];slots[i].possessionPosition=p }
+            else { slots[i].defending=formation.points[i];slots[i].defendingPosition=p }
         }
+        normalizeRoles(phase)
         if phase == .possession { self.formation = formation.rawValue }
         else { defensiveFormation = formation.rawValue }
     }
 }
 
 public struct Workspace: Codable, Equatable {
-    public var schema = "tactics-lab-mac/3"
+    public var schema = "tactics-lab-mac/4"
+    public var opponent:OpponentPlan? = nil
     public var players: [Player]
     public var tactic: Tactic
     public var baseline: Tactic?
@@ -111,9 +127,9 @@ public struct Workspace: Codable, Equatable {
     public var baselineRosterSource: String? = nil
     public var rosterSource: String
 
-    public static func example() -> Workspace {
-        let positions = ["GK","DL","DC","DC","DR","DM","MC","MC","AML","ST","AMR"]
-        let names = ["门将 01","左后卫 02","中卫 03","中卫 04","右后卫 05","后腰 06","中场 07","中场 08","左边锋 09","前锋 10","右边锋 11"]
+    public static func example(includeOpponent:Bool=true) -> Workspace {
+        let positions = Formation.fourThreeThree.positions
+        let names = positions.enumerated().map{NativeCatalog.position($0.element).label+String(format:" %02d",$0.offset+1)}
         let players = (0..<11).map { i in
             Player(name: names[i], position: positions[i], attributes: Dictionary(uniqueKeysWithValues: Attribute.allCases.enumerated().map { j, a in (a.key, 10 + (i * 3 + j * 2) % 7) }))
         }
@@ -121,17 +137,22 @@ public struct Workspace: Codable, Equatable {
         let slots = (0..<11).map { i in
             Slot(id: i, playerID: players[i].id, possession: points[i], defending: Formation.fourFourTwo.points[i], assignment: i == 0 ? .goalkeeper : (i < 6 ? .cover : (i == 9 ? .penetrate : .connect)), defensiveAssignment: i == 0 ? .goalkeeper : .cover)
         }
-        return Workspace(players: players, tactic: Tactic(name: "我的 4-3-3 方案", formation: "4-3-3", defensiveFormation: "4-4-2", slots: slots, mentality: 3, tempo: 3, pressing: 3, defensiveLine: 3, width: 3, passing: 3, notes: ""), rosterSource: "内置示例球员 · 可编辑或导入 CSV")
+        var result=Workspace(players: players, tactic: Tactic(name: "我的 4-3-3 方案", formation: "4-3-3", defensiveFormation: "4-4-2", slots: slots, mentality: 3, tempo: 3, pressing: 3, defensiveLine: 3, width: 3, passing: 3, notes: ""), rosterSource: "内置示例球员 · 可编辑或导入 CSV")
+        result.tactic.normalizePositions()
+        if includeOpponent {result.opponent=OpponentPlan.example()}
+        return result
     }
 
-    public func validated() throws -> Workspace {
-        guard ["tactics-lab-mac/1","tactics-lab-mac/2","tactics-lab-mac/3"].contains(schema) else { throw LabError("这是其他格式的方案。当前只支持 Mac 版方案 JSON。") }
+    public func validated(includeOpponent:Bool=true) throws -> Workspace {
+        guard ["tactics-lab-mac/1","tactics-lab-mac/2","tactics-lab-mac/3","tactics-lab-mac/4"].contains(schema) else { throw LabError("这是其他格式的方案。当前只支持 Mac 版方案 JSON。") }
         guard (11...100).contains(players.count), Set(players.map(\.id)).count == players.count else { throw LabError("名单需要 11–100 名球员，且标识不能重复。") }
         if let baselinePlayers {
             guard baseline != nil, baselinePlayers.count == players.count,
                   Set(baselinePlayers.map(\.id)) == Set(players.map(\.id)) else { throw LabError("对照方案的球员快照不完整。") }
         }
         for player in players + (baselinePlayers ?? []) {
+            try NativeProfile.validate(player.nativeProfile ?? [:])
+            if let raw=player.nativeAttributes {guard raw.count==69,raw.enumerated().allSatisfy({(0..<15).contains($0.offset) ? (0...20).contains($0.element):(0...100).contains($0.element)}) else {throw LabError("球员原始属性不完整。")}}
             guard !player.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, player.name.count <= 80,
                   Attribute.allCases.allSatisfy({ (1...20).contains(player.attributes[$0.key] ?? 0) }) else { throw LabError("球员姓名或属性无效，六项属性均需为 1–20。") }
             guard player.attributes.values.allSatisfy({ (1...20).contains($0) }), player.preferredFoot == nil || ["左脚","右脚","双脚"].contains(player.preferredFoot!) else { throw LabError("球员属性或惯用脚无效。") }
@@ -148,7 +169,10 @@ public struct Workspace: Codable, Equatable {
                   [plan.mentality,plan.tempo,plan.pressing,plan.defensiveLine,plan.width,plan.passing].allSatisfy({ (1...5).contains($0) }),
                   plan.slots.allSatisfy({ s in [s.possession,s.defending].allSatisfy({ $0.x.isFinite && $0.y.isFinite && (0.05...0.95).contains($0.x) && (0.05...0.95).contains($0.y) }) }) else { throw LabError("战术配置无效：检查首发、站位和指令范围。") }
         }
-        var upgraded=self;upgraded.schema="tactics-lab-mac/3";return upgraded
+        if let opponent { _ = try opponent.workspace.validated(includeOpponent:false) }
+        var upgraded=self;upgraded.schema="tactics-lab-mac/4";upgraded.tactic.normalizePositions()
+        if includeOpponent && upgraded.opponent==nil {upgraded.opponent=OpponentPlan.example()}
+        return upgraded
     }
 
     public mutating func captureBaseline() {
@@ -168,9 +192,9 @@ public struct Workspace: Codable, Equatable {
         for (name, old, new) in [("比赛心态",b.mentality,t.mentality),("节奏",b.tempo,t.tempo),("逼抢",b.pressing,t.pressing),("防线",b.defensiveLine,t.defensiveLine),("宽度",b.width,t.width),("传球距离",b.passing,t.passing)] where old != new { rows.append("\(name)：\(old) → \(new)") }
         let moved = t.slots.filter { slot in b.slots.first(where: { $0.id == slot.id }) != slot }.count
         if moved > 0 { rows.append("\(moved) 个位置的站位、任务或首发发生变化") }
-        if t.setup.team != b.setup.team { rows.append("球队阶段指令发生变化") }
-        if t.setup.players != b.setup.players { rows.append("个人指令发生变化") }
-        if t.setup.setPieces != b.setup.setPieces { rows.append("定位球方案发生变化") }
+        if t.setup.team != b.setup.team || t.setup.nativeTeam != b.setup.nativeTeam || t.gameMentality != b.gameMentality { rows.append("比赛心态或球队阶段指令发生变化") }
+        if t.setup.players != b.setup.players || t.setup.nativePlayers != b.setup.nativePlayers || t.setup.markTargets != b.setup.markTargets { rows.append("个人指令发生变化") }
+        if t.setup.setPieces != b.setup.setPieces || t.setup.gameSetPieces != b.setup.gameSetPieces { rows.append("定位球方案发生变化") }
         if t.setup.conditions != b.setup.conditions { rows.append("比赛状态与磨合条件发生变化") }
         if let baselinePlayers {
             let changed = players.filter { player in baselinePlayers.first(where: { $0.id == player.id }) != player }.count

@@ -44,7 +44,7 @@ final class WorkflowTests:XCTestCase {
         let before=w;w.captureBaseline()
         XCTAssertEqual(w.applyAbility(.amateur,scope:.position("DC"),using:&rng),2)
         for i in w.players.indices {
-            if w.players[i].position=="DC" { XCTAssertTrue(Attribute.allCases.allSatisfy{AbilityTier.amateur.range.contains(w.players[i].value($0))}) }
+            if AbilityScope.position("DC").contains(w.players[i]) { XCTAssertTrue(Attribute.allCases.allSatisfy{AbilityTier.amateur.range.contains(w.players[i].value($0))}) }
             else { XCTAssertEqual(w.players[i],before.players[i]) }
         }
         XCTAssertEqual(w.applyAbility(.international,scope:.individual(w.players[9].id),using:&rng),1)
@@ -108,7 +108,7 @@ final class WorkflowTests:XCTestCase {
         for i in players.indices {players[i].removeValue(forKey:"background")};object["players"]=players
         let result=try JSONDecoder().decode(Workspace.self,from:JSONSerialization.data(withJSONObject:object)).validated()
         XCTAssertTrue(result.tactic.setup.team.isEmpty);XCTAssertFalse(result.tactic.setup.conditions.custom)
-        XCTAssertEqual(result.schema,"tactics-lab-mac/3")
+        XCTAssertEqual(result.schema,"tactics-lab-mac/4")
     }
 
     private func fixture(_ action:(URL,EngineSearchEnvironment)throws->Void) throws {

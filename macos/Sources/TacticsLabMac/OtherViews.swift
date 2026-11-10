@@ -12,8 +12,10 @@ struct ExperimentsView: View {
                     if !experiment.hasContext {
                         Text("此 CSV 未记录对手和主客场。按单一批次、同一对手、主队视角比较；请确认实验条件一致。原项目 CSV 只含比分，不会补造 xG。").font(.system(size:12)).foregroundStyle(Theme.amber)
                     }
-                    Picker("数据视图",selection:$store.resultSection) {ForEach(["总览","球队明细","球员数据"],id:\.self){Text($0).tag($0)}}.pickerStyle(.segmented).frame(width:350)
-                    if store.resultSection=="总览" {
+                    Picker("数据视图",selection:$store.resultSection) {ForEach(["测试报告","总览","球队明细","球员数据"],id:\.self){Text($0).tag($0)}}.pickerStyle(.segmented).frame(width:430)
+                    if store.resultSection=="测试报告" {
+                        if store.originalReports.isEmpty {Text("该导入批次没有原版引擎配置快照，请查看总览与明细。").foregroundStyle(Theme.muted)}else{BatchReportView()}
+                    } else if store.resultSection=="总览" {
                     TeamCharts(experiment:experiment)
                     ForEach(experiment.variants,id:\.self) { variant in
                         let summary = experiment.summary(variant)
@@ -40,7 +42,7 @@ struct ExperimentsView: View {
                     VStack(spacing:18) {
                         Image(systemName:"chart.xyaxis.line").font(.system(size:52,weight:.ultraLight)).foregroundStyle(Theme.green).padding(.top,50)
                         Text("让结果回答战术问题").font(.system(size:25,weight:.semibold))
-                        Text("先到「引擎与接入」运行原版内置基线，\n或导入已有逐场结果，查看球队与球员数据。").font(.system(size:14)).multilineTextAlignment(.center).foregroundStyle(Theme.muted)
+                        Text("在战术工作台设置双方阵容并运行比赛，\n或导入已有逐场结果，查看球队与球员数据。").font(.system(size:14)).multilineTextAlignment(.center).foregroundStyle(Theme.muted)
                         Button("导入实验结果",action:store.importExperiment).buttonStyle(.borderedProminent).controlSize(.large)
                         Button("前往原版模拟") {store.page="引擎与接入"}
                         Text("当前没有比赛数据").font(.system(size:11)).foregroundStyle(Theme.muted)
@@ -115,11 +117,11 @@ struct EngineView: View {
                 }
                 OriginalSimulationCard()
                 Card {
-                    HStack {Text("Mac 引擎接入状态").font(.system(size:17,weight:.semibold));Spacer();Chip(text:"已接通原版内置基线")}
+                    HStack {Text("Mac 引擎接入状态").font(.system(size:17,weight:.semibold));Spacer();Chip(text:"工作台输入已接通")}
                     Text("独立比赛宿主已支持原版初始化、测试输入、自然完赛及基础统计读取。下方保留单独的动态库加载检查，供运行失败时诊断。").font(.system(size:12)).foregroundStyle(Theme.muted)
                     HStack {
                         Button(store.checkingNative ? "正在验证加载…" : "验证原版引擎加载",action:store.checkNativeEngine).disabled(store.checkingNative || store.runningOriginal || !store.engine.filesReady)
-                        Text("自定义阵容与战术写入仍在适配").font(.system(size:11)).foregroundStyle(Theme.amber)
+                        Text("每场验证双方阵容、角色、指令、定位球与状态").font(.system(size:11)).foregroundStyle(Theme.green)
                     }
                     if let check=store.nativeCheck {
                         Label(check.loaded ? "原版动态库已成功加载（仅加载检查）" : "原版动态库加载失败",systemImage:check.loaded ? "checkmark.circle" : "exclamationmark.circle").foregroundStyle(check.loaded ? Theme.green : Theme.amber)
@@ -136,19 +138,19 @@ struct EngineView: View {
                 }
                 Card {
                     Text("当前可用").font(.system(size:17,weight:.semibold))
-                    feature("双阶段战术板","四种阵型模板、自由拖拽、共用首发与分阶段任务。",ready:true)
-                    feature("阵容与战术体检","球员 CSV、属性编辑、规则提醒、方案对照和撤销。",ready:true)
-                    feature("实验结果分析","兼容原项目逐场 CSV、完整场次汇总和配对区间。",ready:true)
+                    feature("双阶段战术板","12 种阵型、79 个阶段角色、29 组球队指令、17 组球员指令及角色锁定。",ready:true)
+                    feature("双方阵容与定位球","按位置生成随机球员、独立隐藏数据；10 种定位球情形、任务、候选顺序与主罚人。",ready:true)
+                    feature("实验结果报告","自定义 1–2000 场；双方配置快照、球队和球员数据、趋势图与 HTML 导出。",ready:true)
                     feature("本地方案文件","自动保存、JSON 导入导出，重新打开继续编辑。",ready:true)
                 }
                 Card {
-                    Text("接下来的接入顺序").font(.system(size:17,weight:.semibold))
-                    feature("1. 存档与战术文件","迁移只读存档解析，补齐目录数据，验证 FMF 读取与回写。",ready:false)
+                    Text("存档与联赛").font(.system(size:17,weight:.semibold))
+                    feature("1. 只读存档导入","复用原项目读取组件，选择球队或完整双循环联赛，保留原始属性与来源。",ready:true)
                     feature("2. 独立引擎进程","已跑通初始化、资源、线程上下文、自然完赛和基础统计。",ready:true)
-                    feature("3. 自定义输入与批量实验","内置基线可批量运行；下一步接入工作台阵容、战术和定位球，逐项验证写入与回读。",ready:false)
-                    feature("4. 战术优化搜索","先做单变量试验，再做多对手、主客场轮换和留出样本验证。",ready:false)
+                    feature("3. 自定义联赛实验","自建或导入球队、选择积分与排名规则、主客场赛程与重复赛季。",ready:true)
+                    feature("4. 尚未接入的范围","原始 .dat 数据库、FMF 战术文件、完整生涯状态演进与自动战术优化搜索。",ready:false)
                 }
-                Text("本版使用独立的草图格式，暂不支持 .fm 存档或 .fmf 战术导入导出。比赛在独立进程执行，使用游戏自身文件；不会修改安装包或存档。每次运行校验二进制指纹，版本更新后需要重新适配。").font(.system(size:12)).foregroundStyle(Theme.muted)
+                Text("比赛在独立进程执行，使用游戏自身文件；不会修改安装包或存档。仅适配已验证的 Mac arm64 引擎指纹，游戏更新后需要重新适配。存档阵容与工具初始战术会明确区分，未解析数据不冒充真实值。").font(.system(size:12)).foregroundStyle(Theme.muted)
             }.padding(26)
         }
     }

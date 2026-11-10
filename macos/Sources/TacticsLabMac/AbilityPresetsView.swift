@@ -7,15 +7,15 @@ struct AbilityPresetsView:View {
     @State private var position="DC"
     @State private var playerID:UUID?
     @State private var tier:AbilityTier = .professional
-    private var activePosition:String { store.workspace.positionChoices.contains(position) ? position : store.workspace.positionChoices.first ?? "" }
-    private var activePlayer:UUID { store.workspace.players.first(where:{$0.id==playerID})?.id ?? store.workspace.players[0].id }
+    private var activePosition:String { store.editing.positionChoices.contains(position) ? position : store.editing.positionChoices.first ?? "" }
+    private var activePlayer:UUID { store.editing.players.first(where:{$0.id==playerID})?.id ?? store.editing.players[0].id }
     private var scope:AbilityScope {
         if scopeName=="按位置" { return .position(activePosition) }
         if scopeName=="个人" { return .individual(activePlayer) }
         return .team
     }
     var body:some View {
-        let count=store.workspace.players.filter { scope.contains($0) }.count
+        let count=store.editing.players.filter { scope.contains($0) }.count
         Card {
             HStack {
                 Label("快速设置能力",systemImage:"slider.horizontal.3").font(.system(size:15,weight:.semibold))
@@ -33,9 +33,9 @@ struct AbilityPresetsView:View {
             }
             HStack {
                 if scopeName=="按位置" {
-                    Picker("球员位置",selection:Binding(get:{activePosition},set:{position=$0})) { ForEach(store.workspace.positionChoices,id:\.self) { Text($0).tag($0) } }.frame(width:230)
+                    Picker("球员位置",selection:Binding(get:{activePosition},set:{position=$0})) { ForEach(store.editing.positionChoices,id:\.self) { Text($0).tag($0) } }.frame(width:230)
                 } else if scopeName=="个人" {
-                    Picker("球员",selection:Binding(get:{activePlayer},set:{playerID=$0})) { ForEach(store.workspace.players) { Text($0.name).tag($0.id) } }.frame(width:230)
+                    Picker("球员",selection:Binding(get:{activePlayer},set:{playerID=$0})) { ForEach(store.editing.players) { Text($0.name).tag($0.id) } }.frame(width:230)
                 }
                 Text(tier.detail).font(.system(size:11)).foregroundStyle(Theme.muted)
                 Spacer()

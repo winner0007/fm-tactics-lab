@@ -6,6 +6,9 @@ struct ExperimentTools:View {
     @EnvironmentObject var store:LabStore
     var body:some View {
         HStack {
+            Menu("原版测试历史 · \(store.nativeBatchArchives.count)") {
+                ForEach(store.nativeBatchArchives,id:\.self) {url in Button(url.lastPathComponent.prefix(8)+" · "+(((try? url.resourceValues(forKeys:[.contentModificationDateKey]).contentModificationDate) ?? .distantPast).formatted(date:.abbreviated,time:.shortened))){store.loadNativeBatch(url)}}
+            }.frame(width:185).disabled(store.nativeBatchArchives.isEmpty || store.runningOriginal)
             Menu("历史批次 · \(store.experimentArchives.count)") {
                 ForEach(store.experimentArchives,id:\.self) { url in Button(url.deletingPathExtension().lastPathComponent){store.loadArchive(url)} }
             }.frame(width:180).disabled(store.experimentArchives.isEmpty)
@@ -135,11 +138,12 @@ struct PlayerTotalsChart:View {
     let experiment:Experiment
     @State private var variant=""
     @State private var metricID="goals"
+    @State private var teamSide="for"
     private var metric:StatMetric {StatMetric.player.first{$0.id==metricID} ?? StatMetric.player[0]}
     private var activeVariant:String {experiment.variants.contains(variant) ? variant : experiment.variants.first ?? ""}
     private var rows:[PlayerChartPoint] {
         let matches=Set(experiment.records.filter{$0.variant==activeVariant}.map(\.id))
-        let records=(experiment.playerRecords ?? []).filter{$0.team=="for" && matches.contains($0.matchID)}
+        let records=(experiment.playerRecords ?? []).filter{$0.team==teamSide && matches.contains($0.matchID)}
         return Dictionary(grouping:records,by:\.playerID).compactMap { id,records in
             let values=records.compactMap{$0.statistics[metricID]}
             guard !values.isEmpty else {return nil}
@@ -150,7 +154,8 @@ struct PlayerTotalsChart:View {
     var body:some View {
         Card {
             HStack {
-                Text("本队球员 · \(metricID=="rating" ? "平均评分" : "累计数据")").font(.system(size:16,weight:.semibold));Spacer()
+                Text("球员 · \(metricID=="rating" ? "平均评分" : "累计数据")").font(.system(size:16,weight:.semibold));Spacer()
+                Picker("球队",selection:$teamSide){Text("本队").tag("for");Text("对手").tag("against")}.frame(width:100)
                 Picker("方案",selection:Binding(get:{activeVariant},set:{variant=$0})){ForEach(experiment.variants,id:\.self){Text($0).tag($0)}}.frame(width:160)
                 Picker("指标",selection:$metricID){ForEach(StatMetric.player){Text($0.title).tag($0.id)}}.frame(width:180)
             }
@@ -158,7 +163,7 @@ struct PlayerTotalsChart:View {
             else {
                 Chart(Array(rows.prefix(10))) { r in
                     BarMark(x:.value(metric.title,r.value),y:.value("球员",r.id)).foregroundStyle(Theme.green)
-                        .annotation(position:.trailing){Text(metric.format(r.value)+" · \(r.count) 场").font(.system(size:10))}
+                        .annotation(position:.trailing){Text(metric.format(r.value)+" · \(r.count) 条记录").font(.system(size:10))}
                 }.chartYAxis {
                     AxisMarks { value in AxisValueLabel {if let id=value.as(String.self) {Text(rows.first{$0.id==id}?.name ?? id)}} }
                 }.frame(height:CGFloat(max(130,min(rows.count,10)*32)))

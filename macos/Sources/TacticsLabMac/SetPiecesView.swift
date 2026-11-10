@@ -1,11 +1,11 @@
 import SwiftUI
 import TacticsCore
 
-struct SetPiecesView:View {
+struct LegacySetPiecesView:View {
     @EnvironmentObject var store:LabStore
     @State private var kind:SetPieceKind = .attackingCorner
     @State private var side:SetPieceSide = .left
-    private var routine:SetPieceRoutine {store.workspace.tactic.setup.routine(kind,side)}
+    private var routine:SetPieceRoutine {store.editing.tactic.setup.routine(kind,side)}
     private func edit(_ change:(inout SetPieceRoutine)->Void) {
         store.editSetup { setup in var r=setup.routine(kind,side);change(&r);setup.setPieces[TacticalConfiguration.key(kind,side)]=r }
     }
@@ -46,7 +46,7 @@ struct SetPiecesView:View {
                         Card {
                             HStack {
                                 Text("人员顺序").font(.system(size:16,weight:.semibold));Spacer()
-                                Button("按已知属性建议") {editPeople{$0.suggest(players:store.workspace.players,kind:kind)}}
+                                Button("按已知属性建议") {editPeople{$0.suggest(players:store.editing.players,kind:kind)}}
                             }
                             Text("建议按相关属性等权排序，仅是编辑辅助，不等同于 FM 评分。缺少所需属性的球员不自动推荐，可手动加入；排序可上下调整。").font(.system(size:11)).foregroundStyle(Theme.muted)
                             if routine.personnel == nil {
@@ -55,8 +55,8 @@ struct SetPiecesView:View {
                             }
                             if !kind.defending {
                                 ranking("主罚名单",ids:routine.personnel?.takers ?? [routine.primaryTaker,routine.backupTaker].compactMap{$0}) { ids in editPeople{$0.takers=ids} }
-                                let active=routine.effectiveTaker(slots:store.workspace.tactic.slots)
-                                Text("本场主罚：\(store.workspace.players.first{$0.id==active}?.name ?? "待安排")").font(.system(size:12,weight:.medium)).foregroundStyle(active==nil ? Theme.amber : Theme.green)
+                                let active=routine.effectiveTaker(slots:store.editing.tactic.slots)
+                                Text("本场主罚：\(store.editing.players.first{$0.id==active}?.name ?? "待安排")").font(.system(size:12,weight:.medium)).foregroundStyle(active==nil ? Theme.amber : Theme.green)
                             }
                         }
                         if kind != .penalty { allocation }
@@ -86,11 +86,11 @@ struct SetPiecesView:View {
         }
     }
     private var allocation:some View {
-        let tasks=routine.effectiveTasks(slots:store.workspace.tactic.slots,kind:kind)
-        let taker=routine.effectiveTaker(slots:store.workspace.tactic.slots)
+        let tasks=routine.effectiveTasks(slots:store.editing.tactic.slots,kind:kind)
+        let taker=routine.effectiveTaker(slots:store.editing.tactic.slots)
         return Card {
             Text("当前首发的职责").font(.system(size:16,weight:.semibold))
-            ForEach(store.workspace.tactic.slots.filter{$0.id != 0}) { slot in
+            ForEach(store.editing.tactic.slots.filter{$0.id != 0}) { slot in
                 HStack {
                     Text(store.player(slot).name).frame(maxWidth:.infinity,alignment:.leading)
                     if !kind.defending && slot.playerID==taker {Chip(text:"主罚")}
@@ -105,16 +105,16 @@ struct SetPiecesView:View {
             HStack {
                 Text(title).font(.system(size:12,weight:.semibold));Spacer()
                 Menu("添加球员") {
-                    ForEach(store.workspace.players.filter{!ids.contains($0.id)}) { player in Button(player.name){set(ids+[player.id])} }
-                }.frame(width:110).disabled(ids.count==store.workspace.players.count)
+                    ForEach(store.editing.players.filter{!ids.contains($0.id)}) { player in Button(player.name){set(ids+[player.id])} }
+                }.frame(width:110).disabled(ids.count==store.editing.players.count)
             }
             ForEach(Array(ids.enumerated()),id:\.element) { index,id in
-                let player=store.workspace.players.first{$0.id==id}
+                let player=store.editing.players.first{$0.id==id}
                 HStack {
                     Text("\(index+1)").monospacedDigit().foregroundStyle(Theme.muted).frame(width:20)
                     Text(player?.name ?? "未知球员")
                     Text(player?.preferredFoot ?? "惯用脚未知").foregroundStyle(Theme.muted)
-                    if !store.workspace.tactic.slots.contains(where:{$0.playerID==id}) {Text("候补").foregroundStyle(Theme.muted)}
+                    if !store.editing.tactic.slots.contains(where:{$0.playerID==id}) {Text("候补").foregroundStyle(Theme.muted)}
                     Spacer()
                     Button {var list=ids;list.swapAt(index,index-1);set(list)} label:{Image(systemName:"arrow.up")}.disabled(index==0).help("上移")
                     Button {var list=ids;list.swapAt(index,index+1);set(list)} label:{Image(systemName:"arrow.down")}.disabled(index==ids.count-1).help("下移")
