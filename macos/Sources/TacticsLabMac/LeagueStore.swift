@@ -184,7 +184,7 @@ extension LabStore {
     }
     func runLeague(resume:Bool=false) {
         guard engine.adapterSupported else {error=engine.compatibilityMessage;return}
-        guard !leagueRunning,!runningOriginal,!checkingNative,engine.filesReady,let path=engine.appPath,let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineRuntimeProbe") else{return}
+        guard !engineLocationBusy,engine.filesReady,let path=engine.appPath,let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineRuntimeProbe") else{return}
         guard let seed=UInt32(leagueSeed),(1...256).contains(simulationWorkers) else {error="请输入有效的 32 位随机种子，并行通道应为 1–256。";return}
         let setup=leagueSetup,seasons=leagueSeasons,previous=leagueRun,expectedEngine=engine.binarySHA256!
         let workers=simulationWorkers,queue=MatchQueue();leagueQueue=queue

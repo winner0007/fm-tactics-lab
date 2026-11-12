@@ -4,7 +4,7 @@
 
 在 Mac 上用本机 FM27 原版引擎测试战术：设置双方阵容，反复比赛，看球队和球员表现；也可以导入存档中的球队，跑完一个联赛，查看成绩与排名。
 
-这是 [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab) 的 fork。原项目提供 Windows 版战术编辑、存档对战和批量测试；我们在此基础上增加了 Mac 原生界面和引擎适配。当前版本 **0.8.0**，基于上游 **v1109.3 / `6cb32bf`**，沿用 [MIT 许可](LICENSE)。
+这是 [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab) 的 fork。原项目提供 Windows 版战术编辑、存档对战和批量测试；我们在此基础上增加了 Mac 原生界面和引擎适配。当前版本 **0.8.1**，基于上游 **v1109.3 / `6cb32bf`**，沿用 [MIT 许可](LICENSE)。
 
 ## 现在可以做什么
 
@@ -28,6 +28,8 @@
 
 打开应用后，先到「引擎与接入」查找游戏，再到「战术工作台」设置双方，填入场数并点击「运行比赛」。真实球队从顶部「导入真实球队」选择，整赛季测试从「联赛实验」进入。详见 [Mac 使用说明](macos/README.md)。
 
+游戏目录按运行电脑的用户目录和 Steam 库记录查找，也可随时点“指定游戏位置”，选择 Steam 游戏库、游戏文件夹或 `fm.app`。不绑定开发电脑路径；自动查找不能保证覆盖所有位置，游戏补丁也需单独适配，不是所有旧版本自动兼容。
+
 从源码构建需要 Apple Command Line Tools 和 Python 3.11+；使用打包好的应用不需要 Python。
 
 当前包采用本机临时签名，没有苹果开发者账号和公证。本机构建版可直接打开；通过网络分发时不能保证绕过系统的首次打开检查。应用不需要管理员安装或完全磁盘访问权限，具体见[打包与签名说明](macos/docs/DISTRIBUTION.md)。
@@ -37,7 +39,7 @@ git clone https://github.com/winner0007/fm-tactics-lab.git
 cd fm-tactics-lab
 bash macos/scripts/check.sh
 bash macos/scripts/build.sh
-open 'macos/dist/FM Tactics Lab 0.8.0.app'
+open 'macos/dist/FM Tactics Lab 0.8.1.app'
 ```
 
 ## 还没接通的部分

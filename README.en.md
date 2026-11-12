@@ -4,7 +4,7 @@
 
 Test tactics on a Mac using your installed FM27 engine. Set up both squads, repeat matches and review team/player results, or import clubs from a career save and run a league season.
 
-This is a fork of [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab). The original project provides the Windows editor and simulation workflow; this fork adds a native Mac interface and engine adapter. Current Mac version: **0.8.0**, based on upstream **v1109.3 / `6cb32bf`**, under the [MIT license](LICENSE).
+This is a fork of [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab). The original project provides the Windows editor and simulation workflow; this fork adds a native Mac interface and engine adapter. Current Mac version: **0.8.1**, based on upstream **v1109.3 / `6cb32bf`**, under the [MIT license](LICENSE).
 
 ## What works
 
@@ -27,14 +27,16 @@ Requires Apple Silicon, macOS 14+ and a complete FM27 installation. The adapter 
 
 Find the game on the engine page, configure both sides in the workbench, set the match count and click **运行比赛**. Use **联赛实验** for league seasons. See the [Mac guide](macos/README.md).
 
-Live switching, final goal events and crosses are verified on **27.0.1.2503222**. Building requires Apple Command Line Tools and Python 3.11+. Packaged-app users do not need Python, extra runtimes or an administrator installer. This build is ad hoc signed, without Developer ID or notarization; downloaded copies may be blocked by Gatekeeper. See [distribution details](macos/docs/DISTRIBUTION.md).
+Discovery uses the current Mac's home directory, Steam library records and mounted volumes. **指定游戏位置** remains available after discovery and accepts a Steam library, `steamapps`, `common`, the game folder or `fm.app`. Paths are not tied to the development machine. Arbitrary installation locations and other game patches are not automatically supported; reading a save does not prove engine compatibility. Other-Mac hardware testing is still pending.
+
+Original AI pre-match generation, live switching, final goal events and crosses are verified on **27.0.1.2503222**. The older supported build retains fixed-tactic matches and FMF import/export. Building requires Apple Command Line Tools and Python 3.11+. Packaged-app users do not need Python, extra runtimes or an administrator installer. This build is ad hoc signed, without Developer ID or notarization; downloaded copies may be blocked by Gatekeeper. See [distribution details](macos/docs/DISTRIBUTION.md).
 
 ```sh
 git clone https://github.com/winner0007/fm-tactics-lab.git
 cd fm-tactics-lab
 bash macos/scripts/check.sh
 bash macos/scripts/build.sh
-open 'macos/dist/FM Tactics Lab 0.8.0.app'
+open 'macos/dist/FM Tactics Lab 0.8.1.app'
 ```
 
 ## Still to do

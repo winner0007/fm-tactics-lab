@@ -101,27 +101,26 @@ struct EngineView: View {
                 Card {
                     HStack {
                         Label("FM27 本机安装",systemImage:"desktopcomputer").font(.system(size:18,weight:.semibold)); Spacer()
-                        if store.engineSearching { ProgressView().controlSize(.small); Text("正在自动查找…").font(.system(size:12)) }
-                        else {
-                            Button("重新自动查找") { store.searchEngine() }
-                            if !store.engine.filesReady { Button("指定游戏位置…",action:store.chooseGame).buttonStyle(.borderedProminent) }
-                        }
+                        if store.engineSearching { ProgressView().controlSize(.small); Text("正在检查位置…").font(.system(size:12)) }
+                        Button("重新自动查找") { store.searchEngine() }.disabled(store.engineLocationBusy)
+                        Button("指定游戏位置…",action:store.chooseGame).buttonStyle(.borderedProminent).disabled(store.engineLocationBusy)
                     }
-                    HStack { Metric(title:"游戏版本",value:store.engine.version); Metric(title:"引擎架构",value:store.engine.architectures.joined(separator:" + ")); Metric(title:"原版比赛",value:store.engine.adapterSupported ? "版本已适配":"当前版本待适配") }
+                    Text("可手动选择 Steam 游戏库、steamapps、common、FM 游戏文件夹或 fm.app；识别成功后会记住位置。").font(.system(size:12)).foregroundStyle(Theme.muted)
+                    HStack { Metric(title:"游戏版本",value:store.engine.version); Metric(title:"引擎架构",value:store.engine.architectures.isEmpty ? "待检查":store.engine.architectures.joined(separator:" + ")); Metric(title:"原版比赛",value:store.engine.adapterSupported ? "版本已适配":store.engine.filesReady ? "当前版本待适配":"先选择完整安装") }
                     Text(store.engine.appPath ?? "未找到 FM27 应用").font(.system(size:11,design:.monospaced)).textSelection(.enabled).foregroundStyle(Theme.muted)
                     Label(store.engine.reason,systemImage:store.engine.filesReady ? "checkmark.circle" : "info.circle").font(.system(size:12)).foregroundStyle(store.engine.filesReady ? Theme.green : Theme.amber)
                     if !store.engine.discoverySource.isEmpty { Chip(text:store.engine.discoverySource) }
-                    DisclosureGroup("自动查找范围：Steam 游戏库、应用程序目录、外置磁盘") {
+                    DisclosureGroup("本次检查的位置（自动查找涵盖 Steam 游戏库、应用目录和外置磁盘常见路径）") {
                         ScrollView { Text(store.engine.searchedLocations.joined(separator:"\n")).font(.system(size:10,design:.monospaced)).textSelection(.enabled).frame(maxWidth:.infinity,alignment:.leading) }.frame(maxHeight:170)
                     }.font(.system(size:11)).foregroundStyle(Theme.muted)
                 }
                 OriginalSimulationCard()
                 Card {
-                    HStack {Text("Mac 引擎接入状态").font(.system(size:17,weight:.semibold));Spacer();Chip(text:store.engine.adapterSupported ? "已匹配适配版本":"当前版本待适配")}
+                    HStack {Text("Mac 引擎接入状态").font(.system(size:17,weight:.semibold));Spacer();Chip(text:store.engine.adapterSupported ? "已匹配适配版本":store.engine.filesReady ? "当前版本待适配":"等待完整安装")}
                     Text(store.engine.compatibilityMessage).font(.system(size:12)).foregroundStyle(store.engine.adapterSupported ? Theme.green:Theme.amber)
                     Text("独立比赛宿主已支持原版初始化、测试输入、自然完赛及基础统计读取。下方保留单独的动态库加载检查，供运行失败时诊断。").font(.system(size:12)).foregroundStyle(Theme.muted)
                     HStack {
-                        Button(store.checkingNative ? "正在验证加载…" : "验证原版引擎加载",action:store.checkNativeEngine).disabled(store.checkingNative || store.runningOriginal || !store.engine.filesReady)
+                        Button(store.checkingNative ? "正在验证加载…" : "验证原版引擎加载",action:store.checkNativeEngine).disabled(store.engineLocationBusy || !store.engine.filesReady)
                         Text("每场验证双方阵容、角色、指令、定位球与状态").font(.system(size:11)).foregroundStyle(Theme.green)
                     }
                     if let check=store.nativeCheck {

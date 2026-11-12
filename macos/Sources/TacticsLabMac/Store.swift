@@ -315,7 +315,7 @@ import TacticsCore
         } catch {self.error=error.localizedDescription}
     }
     func checkNativeEngine() {
-        guard !checkingNative,!runningOriginal,let path=engine.appPath,engine.filesReady else {return}
+        guard !engineLocationBusy,let path=engine.appPath,engine.filesReady else {return}
         guard let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineLoadProbe") else {error="安装包缺少引擎验证进程，请重新构建应用。";return}
         checkingNative=true
         Task {
@@ -335,7 +335,7 @@ import TacticsCore
     private func startOriginalBatch(resume:Bool) {
         guard engine.adapterSupported else {error=engine.compatibilityMessage;return}
         guard editedLeagueTeam==nil else {error="当前正在编辑联赛球队。请返回联赛运行，或切换到普通对战后测试。";return}
-        guard !runningOriginal,!leagueRunning,!checkingNative,let path=engine.appPath,engine.filesReady else {return}
+        guard !engineLocationBusy,let path=engine.appPath,engine.filesReady else {return}
         guard let seed=resume ? batch?.firstSeed:UInt32(originalSeed),(1...2000).contains(resume ? (batch?.requested ?? 0):originalCount),(1...256).contains(simulationWorkers) else {error="场数应为 1–2000，并行通道应为 1–256，种子应为有效的 32 位整数。";return}
         guard let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineRuntimeProbe") else {error="安装包缺少原版比赛宿主，请重新构建应用。";return}
         var scenario:NativeScenario?
@@ -412,13 +412,18 @@ import TacticsCore
         do {export(Data(try BatchExport.html(matches:originalReports,batch:batch).utf8),name:"战术测试报告.html",type:.html)} catch {self.error=error.localizedDescription}
     }
     func revealOriginalLogs() {if let folder=originalLogFolder {NSWorkspace.shared.activateFileViewerSelecting([folder])}}
+    var engineLocationBusy:Bool {engineSearching || runningOriginal || leagueRunning || checkingNative || processingTactic || readingSave}
     func chooseGame() {
+        guard !engineLocationBusy else {return}
         let panel=NSOpenPanel(); panel.canChooseFiles=true; panel.canChooseDirectories=true
-        panel.allowedContentTypes=[.applicationBundle,.folder]; panel.message="自动查找未找到完整安装。请选择 fm.app 或包含它的游戏文件夹，成功后会记住位置。"
+        panel.allowsMultipleSelection=false;panel.treatsFilePackagesAsDirectories=false
+        panel.title="指定 FM27 游戏位置";panel.prompt="检查此位置"
+        panel.allowedContentTypes=[.applicationBundle,.folder]; panel.message="请选择 Steam 游戏库、steamapps、common、Football Manager 27 文件夹或 fm.app（不是 Steam.app）。完整安装识别成功后会记住位置。"
+        if let path=engine.appPath {panel.directoryURL=URL(fileURLWithPath:path).deletingLastPathComponent()}
         if panel.runModal() == .OK,let url=panel.url { searchEngine(selected:url) }
     }
     func searchEngine(selected:URL?=nil) {
-        guard !engineSearching else { return }
+        guard !engineLocationBusy else { return }
         engineSearching=true
         let preference=storage.appendingPathComponent("engine-location.json")
         let preferred=(try? Data(contentsOf:preference)).flatMap { try? JSONDecoder().decode(String.self,from:$0) }.map { URL(fileURLWithPath:$0) }
@@ -426,7 +431,7 @@ import TacticsCore
             let report=await Task.detached(priority:.userInitiated) { EngineReport.inspect(app:selected,preferredApp:preferred) }.value
             if engine.binarySHA256 != report.binarySHA256 {nativeCheck=nil}
             engine=report; engineSearching=false
-            if selected != nil,report.installationFound,let path=report.appPath,!preview {
+            if selected != nil,report.filesReady,let path=report.appPath,!preview {
                 do {
                     try FileManager.default.createDirectory(at:storage,withIntermediateDirectories:true)
                     try JSONEncoder().encode(path).write(to:preference,options:.atomic)

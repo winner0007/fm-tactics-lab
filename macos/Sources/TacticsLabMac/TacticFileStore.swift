@@ -16,7 +16,7 @@ extension LabStore {
     }
     private func tacticFileTools()throws->(URL,URL) {
         guard engine.adapterSupported else {throw LabError(engine.compatibilityMessage)}
-        guard !processingTactic,!readingSave,!leagueRunning,!runningOriginal,
+        guard !engineLocationBusy,
               engine.filesReady,let app=engine.appPath,
               let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineRuntimeProbe") else {throw LabError("请先完成引擎接入，并等待当前导入或模拟结束。")}
         return (helper,URL(fileURLWithPath:app))

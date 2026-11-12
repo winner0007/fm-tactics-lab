@@ -117,7 +117,7 @@ final class WorkflowTests:XCTestCase {
         defer {try? FileManager.default.removeItem(at:root)}
         try action(root,EngineSearchEnvironment(home:root.appendingPathComponent("home"),applicationFolders:[root.appendingPathComponent("Applications")],volumes:[root.appendingPathComponent("External")]))
     }
-    private func app(_ url:URL,version:String="27.0.0.2493426",complete:Bool=true) throws {
+    private func app(_ url:URL,version:String="27.0.0.2493426",complete:Bool=true,resources:Bool=false) throws {
         let contents=url.appendingPathComponent("Contents")
         try FileManager.default.createDirectory(at:contents,withIntermediateDirectories:true)
         try PropertyListSerialization.data(fromPropertyList:["CFBundleShortVersionString":version],format:.xml,options:0).write(to:contents.appendingPathComponent("Info.plist"))
@@ -125,6 +125,14 @@ final class WorkflowTests:XCTestCase {
             let binary=contents.appendingPathComponent("PlugIns/game_plugin.bundle/Contents/MacOS/game_plugin")
             try FileManager.default.createDirectory(at:binary.deletingLastPathComponent(),withIntermediateDirectories:true)
             try Data([0xcf,0xfa,0xed,0xfe,0x0c,0,0,1]).write(to:binary)
+        }
+        if resources {
+            let bundle=contents.appendingPathComponent("PlugIns/game_plugin.bundle/Contents")
+            for path in ["Resources/shared","Resources/icudt65l.dat","Frameworks/libsteam_api.dylib","Frameworks/libEOSSDK-Mac-Shipping.dylib","Frameworks/PlayFabPartyMac.framework","Frameworks/PlayFabMultiplayerFramework_macOS.framework"] {
+                let url=bundle.appendingPathComponent(path)
+                try FileManager.default.createDirectory(at:url.deletingLastPathComponent(),withIntermediateDirectories:true)
+                try Data().write(to:url)
+            }
         }
     }
     func testSteamLibraryAutodiscoverySkipsIncompleteInstallation() throws {
@@ -170,6 +178,63 @@ final class WorkflowTests:XCTestCase {
             XCTAssertTrue(report.installationFound)
             XCTAssertTrue(report.diagnostics.contains{$0.title=="Steam 动态库" && !$0.passed})
             XCTAssertFalse(report.canSimulate)
+        }
+    }
+    func testManualSteamLibraryAtEverySupportedLevel() throws {
+        try fixture { root,environment in
+            // Neither this user's home nor this library path occurs in production code.
+            let library=root.appendingPathComponent("另一台电脑/自定义游戏库")
+            let game=library.appendingPathComponent("steamapps/common/My renamed installation")
+            let actual=game.appendingPathComponent("fm.app")
+            try app(actual,resources:true)
+            for selected in [library,library.appendingPathComponent("steamapps"),library.appendingPathComponent("steamapps/common"),game,actual] {
+                let report=EngineReport.inspect(app:selected,environment:environment)
+                XCTAssertEqual(report.appPath,actual.resolvingSymlinksInPath().path)
+                XCTAssertTrue(report.filesReady);XCTAssertTrue(report.discoverySource.hasPrefix("手动指定"))
+                // A valid installation is not sufficient to pass the binary fingerprint gate.
+                XCTAssertFalse(report.adapterSupported)
+            }
+            let alias=root.appendingPathComponent("Library shortcut")
+            try FileManager.default.createSymbolicLink(at:alias,withDestinationURL:library)
+            XCTAssertEqual(EngineReport.inspect(app:alias,environment:environment).appPath,actual.resolvingSymlinksInPath().path)
+            let legacy=root.appendingPathComponent("Legacy Library/SteamApps/common/Football Manager 27/fm.app")
+            try app(legacy,resources:true)
+            XCTAssertTrue(EngineReport.inspect(app:root.appendingPathComponent("Legacy Library"),environment:environment).filesReady)
+        }
+    }
+    func testManualSearchDoesNotFallBackToUnrelatedInstall() throws {
+        try fixture { root,environment in
+            try app(environment.applicationFolders[0].appendingPathComponent("Football Manager 27.app"),resources:true)
+            let empty=root.appendingPathComponent("Empty Library")
+            try FileManager.default.createDirectory(at:empty,withIntermediateDirectories:true)
+            let failure=EngineReport.inspect(app:empty,environment:environment)
+            XCTAssertFalse(failure.filesReady);XCTAssertEqual(failure.discoverySource,"手动指定未找到")
+            XCTAssertTrue(failure.reason.contains("所选位置"));XCTAssertTrue(failure.compatibilityMessage.contains("完整"))
+            XCTAssertFalse(failure.compatibilityMessage.contains("尚未适配"))
+            let absent=EngineReport.inspect(app:root.appendingPathComponent("Unmounted"),environment:environment)
+            XCTAssertTrue(absent.reason.contains("不存在或磁盘未挂载"))
+            let nested=empty.appendingPathComponent("Nested/Deep/Game/fm.app")
+            try app(nested,resources:true)
+            XCTAssertFalse(EngineReport.inspect(app:empty,environment:environment).filesReady)
+            XCTAssertTrue(EngineReport.inspect(app:nested,environment:environment).filesReady)
+        }
+    }
+    func testOtherMachineLibrarySearchAndUnsupportedBuild() throws {
+        try fixture { root,_ in
+            let home=root.appendingPathComponent("Users/other-player")
+            let environment=EngineSearchEnvironment(home:home,applicationFolders:[],volumes:[])
+            let steam=home.appendingPathComponent("Library/Application Support/Steam")
+            try FileManager.default.createDirectory(at:steam.appendingPathComponent("steamapps"),withIntermediateDirectories:true)
+            let library=root.appendingPathComponent("Other Disk/Player Steam Library")
+            let actual=library.appendingPathComponent("steamapps/common/Football Manager 27/fm.app")
+            try app(actual,version:"27.0.99.9999999",resources:true)
+            try "\"libraryfolders\" { \"1\" { \"path\" \"\(library.path)\" } }".write(to:steam.appendingPathComponent("steamapps/libraryfolders.vdf"),atomically:true,encoding:.utf8)
+            let report=EngineReport.inspect(environment:environment)
+            XCTAssertTrue(report.filesReady);XCTAssertFalse(report.adapterSupported)
+            XCTAssertEqual(report.appPath,actual.resolvingSymlinksInPath().path)
+            XCTAssertTrue(report.compatibilityMessage.contains("已找到游戏"))
+            XCTAssertTrue(report.compatibilityMessage.contains("尚未适配"))
+            XCTAssertTrue(report.searchedLocations.allSatisfy{$0.hasPrefix(root.path)})
         }
     }
 }

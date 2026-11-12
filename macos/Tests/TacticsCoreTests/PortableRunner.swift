@@ -81,7 +81,10 @@ func XCTAssertThrowsError<T>(_ expression: @autoclosure () throws -> T, _ messag
             ("Custom Steam libraries and stale installs",workflow.testSteamLibraryAutodiscoverySkipsIncompleteInstallation),
             ("Applications external and preferred paths",workflow.testApplicationsExternalAndRememberedPathSearch),
             ("Manual folder and missing game fallback",workflow.testManualFolderWrongVersionAndMissingGame),
-            ("External Application Support Steam",workflow.testExternalApplicationSupportSteamWithoutHomeSymlink)
+            ("External Application Support Steam",workflow.testExternalApplicationSupportSteamWithoutHomeSymlink),
+            ("Manual Steam library levels and symlink",workflow.testManualSteamLibraryAtEverySupportedLevel),
+            ("Manual search scope and actionable errors",workflow.testManualSearchDoesNotFallBackToUnrelatedInstall),
+            ("Other user library and unsupported build",workflow.testOtherMachineLibrarySearchAndUnsupportedBuild)
         ]
         for (name,test) in tests { try test(); print("PASS \(name)") }
         print("\(tests.count) core checks passed")

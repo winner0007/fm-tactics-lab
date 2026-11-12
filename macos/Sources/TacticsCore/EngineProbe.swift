@@ -36,7 +36,11 @@ public struct EngineReport: Codable {
     public var installationFound: Bool { appPath != nil && pluginFound && !architectures.isEmpty }
     public var filesReady: Bool { installationFound && !diagnostics.isEmpty && diagnostics.allSatisfy(\.passed) }
     public var adapterSupported:Bool {filesReady && architectures.contains("arm64") && OriginalMatchReport.supportsEngine(binarySHA256)}
-    public var compatibilityMessage:String {adapterSupported ? "此引擎指纹在已验证范围内，比赛结果仍需通过逐场回读校验。":"当前游戏版本 \(version) 的比赛引擎尚未适配。可继续编辑、读取已支持存档及查看历史报告；模拟和游戏战术 FMF 读写暂不可用。"}
+    public var compatibilityMessage:String {
+        guard filesReady else {return "请先指定完整的 FM27 安装；找到游戏并检查配套文件后，才能确认引擎是否适配。"}
+        guard architectures.contains("arm64") else {return "已找到游戏，但此安装没有 arm64 引擎。当前测试工具需要 Apple Silicon 版 FM27。"}
+        return adapterSupported ? "此引擎指纹在已验证范围内，比赛结果仍需通过逐场回读校验。":"已找到游戏，但当前版本 \(version) 的比赛引擎尚未适配。可继续编辑、读取已支持存档及查看历史报告；模拟和游戏战术 FMF 读写暂不可用。"
+    }
     public static var searching: EngineReport { EngineReport(appPath:nil,version:"正在查找",architectures:[],pluginFound:false,canSimulate:false,reason:"正在检查 Steam 游戏库、应用程序目录与已挂载磁盘。") }
 
     public static func inspect(app: URL? = nil, preferredApp: URL? = nil, environment: EngineSearchEnvironment = .current) -> EngineReport {
@@ -50,10 +54,16 @@ public struct EngineReport: Codable {
             checked.append(root.path)
             if root.pathExtension.lowercased()=="app" { add(root,source); return }
             for name in ["fm.app","Football Manager 27.app","Football Manager 27/fm.app","Football Manager 27/Football Manager 27.app","FootballManager27/fm.app","FM27/fm.app"] { add(root.appendingPathComponent(name),source) }
-            // Scan only immediate FM27-named children, never an entire disk.
-            for item in (try? fm.contentsOfDirectory(at:root,includingPropertiesForKeys:nil,options:.skipsHiddenFiles)) ?? [] {
+            // Only check immediate children, including renamed game folders.
+            // Do not recursively scan a user's disk or enter unrelated app bundles.
+            for item in (try? fm.contentsOfDirectory(at:root,includingPropertiesForKeys:[.isDirectoryKey],options:.skipsHiddenFiles)) ?? [] {
                 let name=item.lastPathComponent.lowercased().replacingOccurrences(of:" ",with:"")
-                if name.contains("footballmanager27") || name=="fm27" { add(item.pathExtension=="app" ? item : item.appendingPathComponent("fm.app"),source) }
+                if item.pathExtension.lowercased()=="app" {
+                    if name.contains("footballmanager27") || name=="fm.app" { add(item,source) }
+                } else if (try? item.resourceValues(forKeys:[.isDirectoryKey]).isDirectory)==true {
+                    add(item.appendingPathComponent("fm.app"),source)
+                    if name.contains("footballmanager27") || name=="fm27" { add(item.appendingPathComponent("Football Manager 27.app"),source) }
+                }
             }
         }
         func steam(_ root: URL, _ source: String) {
@@ -62,6 +72,11 @@ public struct EngineReport: Codable {
         }
         if let app {
             directory(app,"手动指定")
+            if app.pathExtension.lowercased() != "app" {
+                // Accept Steam library roots, steamapps, common and game folders.
+                steam(app,"手动指定 · Steam 游戏库")
+                directory(app.appendingPathComponent("common"),"手动指定 · Steam 游戏库")
+            }
         } else {
             if let preferredApp { directory(preferredApp,"上次指定的位置") }
             var roots=[environment.home.appendingPathComponent("Library/Application Support/Steam")]
@@ -102,8 +117,14 @@ public struct EngineReport: Codable {
         }
         if let partialInstallation { return partialInstallation }
         if let manualFailure { return manualFailure }
+        let reason:String
+        if let app {
+            if !fm.fileExists(atPath:app.path) {reason="所选位置不存在或磁盘未挂载。请连接游戏所在磁盘，再重新选择。"}
+            else if !fm.isReadableFile(atPath:app.path) {reason="无法读取所选位置。请确认磁盘已连接，并允许访问所选文件夹。"}
+            else {reason="所选位置中未找到 FM27。可选择 Steam 游戏库、steamapps/common、游戏文件夹或 fm.app；如果游戏藏在更深的目录，请直接选择 fm.app。"}
+        } else {reason="常见路径中未找到 FM27。自动查找不能覆盖所有安装位置，请点击“指定游戏位置”选择 Steam 游戏库或 fm.app。"}
         return EngineReport(appPath:nil,version:"未发现安装",architectures:[],pluginFound:false,canSimulate:false,
-            reason:"常见路径中未找到完整的 FM27。请指定 fm.app 或包含它的游戏文件夹。",discoverySource:"自动查找未找到",searchedLocations:Array(Set(checked)).sorted())
+            reason:reason,discoverySource:app == nil ? "自动查找未找到":"手动指定未找到",searchedLocations:Array(Set(checked)).sorted())
     }
 
     public static func steamLibraries(_ text: String) -> [String] {
