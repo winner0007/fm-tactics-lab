@@ -22,7 +22,7 @@ import Foundation
         let text=String(decoding:input,as:UTF8.self)
         rejected(Data(text.split(separator:"\n").dropLast().joined(separator:"\n").utf8))
         rejected(Data(text.replacingOccurrences(of:"\"fullMatchCompleted\":true",with:"\"fullMatchCompleted\":false").utf8))
-        rejected(Data(text.replacingOccurrences(of:OriginalMatchReport.engineHash,with:"wrong-profile").utf8))
+        rejected(Data(text.replacingOccurrences(of:report.engineSHA256,with:"wrong-profile").utf8))
         rejected(Data(text.replacingOccurrences(of:"\"workbenchApplied\":false",with:"\"workbenchApplied\":true").utf8))
         rejected(Data(text.replacingOccurrences(of:"\"totalsVerified\":true",with:"\"totalsVerified\":false").utf8))
         var rows=try text.split(separator:"\n").map {try JSONSerialization.jsonObject(with:Data($0.utf8)) as! [String:Any]}
@@ -35,6 +35,11 @@ import Foundation
         rejected(Data((text+"{\"event\":\"failed\",\"reason\":\"late failure\"}\n").utf8))
         rejected(try Data(contentsOf:folder.appendingPathComponent("missing-engine.jsonl")),exit:65)
         rejected(try Data(contentsOf:folder.appendingPathComponent("cancelled.jsonl")),exit:15)
+        precondition(report.engineVersion==OriginalMatchReport.version(for:report.engineSHA256))
+        var other=try JSONSerialization.jsonObject(with:JSONEncoder().encode(report)) as! [String:Any]
+        other["engineSHA256"]=report.engineSHA256==OriginalMatchReport.engineHash ? OriginalMatchReport.updatedEngineHash:OriginalMatchReport.engineHash
+        let alternate=try JSONDecoder().decode(OriginalMatchReport.self,from:JSONSerialization.data(withJSONObject:other))
+        do {_ = try OriginalMatchReport.experiment([report,alternate]);fatalError("mixed engine versions accepted")}catch{}
         print("PASS real result parse, statistics, persistence, experiment linkage, 11 invalid/incomplete result gates")
     }
 }

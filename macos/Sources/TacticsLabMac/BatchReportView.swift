@@ -47,7 +47,7 @@ struct BatchReportView:View {
                     ForEach(0..<2,id:\.self) {side in LineupSnapshot(team:config.teams[side],side:side)}
                     DisclosureGroup("测试条件与配置指纹") {
                         VStack(alignment:.leading,spacing:7) {
-                            Text("引擎：27.0.0.2493426 · Apple Silicon · 原版自然完赛")
+                            Text("引擎：\(reports.first!.engineVersion) · Apple Silicon · 原版自然完赛")
                             Text("随机种子：\(reports.first!.seed)–\(reports.last!.seed) · 主队固定主场")
                             Text("配置 SHA-256："+config.sha256).textSelection(.enabled)
                             ForEach(config.teams[0].notes,id:\.self){Text($0)}

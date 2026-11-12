@@ -108,6 +108,7 @@ public struct LeagueRun:Codable,Equatable,Identifiable {
     public var status="运行中"
     public var results:[LeagueResult]=[]
     public var failure:String? = nil
+    public var engineSHA256:String? = nil
     public var expected:Int {schedule.count*seasons}
     public init(setup:LeagueSetup,seasons:Int,seed:UInt32)throws {
         self.setup=try setup.validated();self.schedule=setup.fixtures();self.seasons=seasons;self.firstSeed=seed;startedAt=Date()
@@ -117,7 +118,14 @@ public struct LeagueRun:Codable,Equatable,Identifiable {
     }
     public func table(season:Int)->[LeagueStanding] {LeagueTable.calculate(teams:setup.teams,rules:setup.rules,results:results.filter{$0.season==season},complete:results.filter{$0.season==season}.count==schedule.count)}
     public var completedSeasons:[Int] {(1...seasons).filter{s in results.filter{$0.season==s}.count==schedule.count}}
+    public func validateEngine(_ hash:String) throws {
+        guard OriginalMatchReport.supportsEngine(hash),engineSHA256.map({$0==hash}) ?? true,
+              results.allSatisfy({$0.report.engineSHA256==hash}) else {
+            throw LabError("这份联赛实验使用的引擎与当前版本不同。历史结果已保留，请新建实验；不能混用版本续跑。")
+        }
+    }
     public func validated()throws->Self {
+        if let hash=engineSHA256 ?? results.first?.report.engineSHA256 {try validateEngine(hash)}
         _ = try setup.validated()
         var actual=setup;actual.importedSchedule=schedule;_ = try actual.validated()
         guard (1...100).contains(seasons),expected<=20000,results.count<=expected,UInt64(firstSeed)+UInt64(expected-1)<=UInt64(UInt32.max),status != "已完成" || results.count==expected else {throw LabError("保存的联赛进度无效。")}

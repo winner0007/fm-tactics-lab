@@ -90,7 +90,7 @@ import TacticsCore
         refreshArchives()
         if let data=try? Data(contentsOf:storage.appendingPathComponent("latest-batch.json")) {batch=try? JSONDecoder().decode(SimulationBatch.self,from:data)}
         if let data=try? Data(contentsOf:storage.appendingPathComponent("original-matches.json")),let reports=try? JSONDecoder().decode([OriginalMatchReport].self,from:data),!reports.isEmpty,
-           reports.allSatisfy({$0.engineSHA256==OriginalMatchReport.engineHash}),
+           reports.allSatisfy({OriginalMatchReport.supportsEngine($0.engineSHA256)}),
            (try? OriginalMatchReport.experiment(reports).validated()) != nil {
             originalReports=reports;originalMatch=reports.last
             let logs=storage.appendingPathComponent("engine-runs")
@@ -326,7 +326,7 @@ import TacticsCore
         guard let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineRuntimeProbe") else {error="安装包缺少原版比赛宿主，请重新构建应用。";return}
         let scenario:NativeScenario?
         do {scenario=useWorkbench ? try NativeScenario(workspace:workspace):nil} catch {self.error=error.localizedDescription;return}
-        let count=originalCount
+        let count=originalCount,expectedEngine=engine.binarySHA256
         let folder=storage.appendingPathComponent("engine-runs").appendingPathComponent(UUID().uuidString)
         clearOriginalSelection();experiment=nil
         originalLogFolder=folder;runningOriginal=true;originalCancelled=false
@@ -346,6 +346,7 @@ import TacticsCore
                     let report=try await Task.detached(priority:.userInitiated) {
                         try job.run(helper:helper,app:URL(fileURLWithPath:path),seed:current,log:folder.appendingPathComponent("seed-\(current).jsonl"),scenario:scenario)
                     }.value
+                    guard report.engineSHA256==expectedEngine else {throw LabError("游戏引擎在检测后发生变化，请重新检查引擎并新建实验。") }
                     completed.append(report);originalMatch=report;originalReports=completed
                     batch?.completed=completed.count
                     // One immutable result per match is durable before updating the UI.

@@ -35,7 +35,7 @@ public struct EngineReport: Codable {
     public var binarySHA256: String? = nil
     public var installationFound: Bool { appPath != nil && pluginFound && !architectures.isEmpty }
     public var filesReady: Bool { installationFound && !diagnostics.isEmpty && diagnostics.allSatisfy(\.passed) }
-    public var adapterSupported:Bool {filesReady && architectures.contains("arm64") && binarySHA256==OriginalMatchReport.engineHash}
+    public var adapterSupported:Bool {filesReady && architectures.contains("arm64") && OriginalMatchReport.supportsEngine(binarySHA256)}
     public var compatibilityMessage:String {adapterSupported ? "此引擎指纹在已验证范围内，比赛结果仍需通过逐场回读校验。":"当前游戏版本 \(version) 的比赛引擎尚未适配。可继续编辑、读取已支持存档及查看历史报告；模拟和游戏战术 FMF 读写暂不可用。"}
     public static var searching: EngineReport { EngineReport(appPath:nil,version:"正在查找",architectures:[],pluginFound:false,canSimulate:false,reason:"正在检查 Steam 游戏库、应用程序目录与已挂载磁盘。") }
 

@@ -29,7 +29,7 @@ struct OriginalSimulationCard:View {
             if store.editedLeagueTeam != nil {Text("当前编辑的是联赛球队，请到“联赛实验”运行；普通对战需先切换编辑范围。").font(.caption).foregroundStyle(Theme.muted)}
             if store.runningOriginal {Text(store.originalProgress).font(.system(size:12)).foregroundStyle(Theme.green)}
             if !store.engine.adapterSupported {Text(store.engine.compatibilityMessage).font(.system(size:12)).foregroundStyle(Theme.amber)}
-            Text("每场使用独立进程；多场依次递增种子。适配版本：27.0.0.2493426 / Apple Silicon，其他二进制版本会停止运行。").font(.system(size:11)).foregroundStyle(Theme.muted)
+            Text("每场使用独立进程；多场依次递增种子。适配版本：27.0.0.2493426、27.0.1.2503222 / Apple Silicon，其他二进制版本会停止运行。").font(.system(size:11)).foregroundStyle(Theme.muted)
             if let report=store.originalMatch {
                 Divider()
                 HStack {

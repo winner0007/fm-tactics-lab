@@ -35,10 +35,11 @@ static void fault(int sig, siginfo_t *info, void *context) {
       (unsigned long long)(u->uc_mcontext->__ss.__lr-base), info->si_addr);
     write(1, line, n); _exit(128+sig);
 }
+#include "EngineProfiles.h"
+static void *at(uintptr_t rva) { return (void *)(base+engineRVA(rva)); }
 template<class R, class... A> static R call(uintptr_t rva, A... args) {
-    return ((R(*)(A...))(base+rva))(args...);
+    return ((R(*)(A...))at(rva))(args...);
 }
-static void *at(uintptr_t rva) { return (void *)(base+rva); }
 static void *slot(uintptr_t rva) { return *(void **)at(rva); }
 extern "C" void fm_call_sret(void *fn, void *out, void *a0, void *a1=nullptr, void *a2=nullptr, void *a3=nullptr);
 static NSString *hashFile(NSString *path) {
@@ -122,7 +123,7 @@ int main(int argc, char **argv) {
         NSString *plugin=[app stringByAppendingPathComponent:@"Contents/PlugIns/game_plugin.bundle/Contents/MacOS/game_plugin"];
         begin("verify_engine_profile");
         NSString *hash=hashFile(plugin);
-        if (![hash isEqualToString:@"774cacde63567fd3901c47719e7a6ed94cc3a0a62e9b94989dcac6b4890ec0e1"]) fail("unsupported_engine_binary",65);
+        if (!selectEngineProfile(hash)) fail("unsupported_engine_binary",65);
         begin("load_original_engine");
         void *handle=dlopen(plugin.fileSystemRepresentation,RTLD_NOW|RTLD_LOCAL);
         if (!handle) fail(dlerror(),66);

@@ -2,9 +2,9 @@
 
 ## 当前做到哪里
 
-0.6 增加新开档读取、球队锁定、对手战术分组报告和游戏更新检测。原版比赛仍只验证了旧的 27.0.0.2493426；本机已更新到 27.0.1.2503222，当前可读新存档，不能运行新版引擎。上游 Windows 代码保留在原目录，Mac 实现在 `macos/`。
+0.6.1 恢复 27.0.1.2503222 原版比赛和 FMF 读写；0.6 的新开档读取、球队锁定和对手战术报告保留。上游 Windows 代码保留在原目录，Mac 实现在 `macos/`。
 
-当前只适配 FM27 `27.0.0.2493426` 的指定 arm64 二进制；引擎指纹、字段和 ABI 依据在 [实测记录](MAC_ENGINE_STATUS.md)。游戏更新后要重新验证，不能只改版本字符串。
+当前适配 FM27 `27.0.0.2493426` 和 `27.0.1.2503222` 的指定 arm64 二进制；引擎指纹、字段和 ABI 依据在 [实测记录](MAC_ENGINE_STATUS.md)。游戏更新后要重新验证，不能只改版本字符串。
 
 ## 代码入口
 
@@ -13,7 +13,7 @@
 | 球员、战术和原版功能目录 | `Sources/TacticsCore/Models.swift`、`NativeCatalog.swift`、`GameTactics.swift`、`GameSetPieces.swift` |
 | 随机属性与个人资料 | `AbilityPresets.swift`、`NativeProfile.swift` |
 | 送入比赛的配置与校验 | `NativeScenario.swift`、`native/EngineScenario.h`、`EngineSetPieces.h` |
-| Mac 引擎启动与自然完赛 | `native/EngineRuntimeProbe.mm`、`EngineABI_arm64.S` |
+| Mac 引擎启动与自然完赛 | `native/EngineProfiles.h`、`EngineRuntimeProbe.mm`、`EngineABI_arm64.S` |
 | 编辑哪支球队、自动保存和撤销 | `Sources/TacticsLabMac/Store.swift`、`LeagueStore.swift`、`EditingTeamBar.swift` |
 | 存档读取 | `runtime/SaveReader.py` → 上游 `src/desktop_save_*`；Swift 侧 `SaveReaderJob.swift`、`SaveImport.swift` |
 | 方案库与 FMF | `TeamPreset.swift`、`TeamPresetStore.swift`、`FMF.swift`、`TacticFileJob.swift`、`native/EngineTactics.h` |
@@ -49,14 +49,14 @@
 
 对照提交 `dc10a12`，Mac 主干仍基于 `6cb32bf`，没有整体合入新版 Windows 适配器。优先看这些已实现的路线：
 
-已单独移植 `desktop_save_compat.py` 的正式版布局与辅助指令映射修复，并为本机 `27.0.1+2503222` 增加经过球队／赛程读取验证的精确登记。这不会改变原生比赛适配器。继续适配时必须重新定位 Mac 函数、对象布局和线程状态，不能只替换旧引擎哈希。
+已单独移植 `desktop_save_compat.py` 的正式版布局与辅助指令映射修复，并为本机 `27.0.1+2503222` 增加存档登记。0.6.1 另行定位了新版 Mach-O 的 33 个函数与全局地址，见 `EngineProfiles.h`。以后更新仍须重新验证函数、对象布局和线程状态，不能只替换旧引擎哈希。
 
 | 项目 | Mac 当前状态 | 上游参考与移植要点 |
 | --- | --- | --- |
 | 原版 AI 生成 | 尚未接通；当前导入真实球员后使用明确的工具模板 | `desktop_real_generation.py`、`desktop_real_generation_prepare.py`、`native_source_generation.h`：绑定真实教练及阵容，0 tick 准备后读取主／客场完整战术；先验证身份、阵容与原版回读，再接 UI。生成结果是固定预览计划，不是生涯实战还原。 |
 | 引擎复用与并发 | 每场独立子进程，串行 | `desktop_warm_batch.py` 的协议 2：宿主能力握手、逐场清理执行力与线程状态、释放比赛对象、逐场超时取消。Mac 先证明冷／热运行一致和内存稳定，再开放并发；Windows 1–256 是输入范围，性能只实测到 8 路。 |
 | 随机对手战术池 | 尚无独立池；可用多支独立联赛球队测试 | `fm27_tactic_pool.py`：按种子固定抽签、权重、A/B 共用对手抽签。与本版 `TacticPerformance` 分组报告衔接。不要把上游统一属性选项替换成我们的按位置随机。 |
-| 正式版与 FMF | 已验证 27.0.0.2493426 及战术 FMF；未验证 27.0.1 | 上游版本为 27.0.1+2494687，`desktop_save_compat.py` 增加布局与辅助指令映射修复。Windows 地址和对象布局不能复制到 arm64；旧版本继续保留独立指纹。 |
+| 正式版与 FMF | 已验证 27.0.0.2493426、27.0.1.2503222 及战术 FMF | 上游版本为 27.0.1+2494687，`desktop_save_compat.py` 增加布局与辅助指令映射修复。Windows 地址和对象布局不能复制到 arm64；旧版本继续保留独立指纹。 |
 | 球队、联赛名称 | 当前显示存档球队名和联赛 ID | `desktop_game_db_names.py` 可借鉴本机 lang_db.dat 名称读取；这不等于已有完整初始数据库导入。 |
 | 定位球 FMF | 可编辑并执行，单独文件交换未接通 | 对照上游单独的定位球入口；战术 FMF 不含定位球，不能宣称已覆盖。 |
 

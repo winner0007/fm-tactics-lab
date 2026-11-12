@@ -5,7 +5,7 @@ import TacticsCore
 @main struct CheckSaveImport {
     static func main() throws {
         let a = CommandLine.arguments
-        guard a.count == 6 || (a.count==7 && a[6]=="--preflight-only") else { throw LabError("usage: check-save-import catalog.json rosters.json output helper fm.app [--preflight-only]") }
+        guard a.count == 6 || (a.count==7 && ["--preflight-only","--full-season"].contains(a[6])) else { throw LabError("usage: check-save-import catalog.json rosters.json output helper fm.app [--preflight-only|--full-season]") }
         let catalog = try JSONDecoder().decode(SaveCatalog.self, from: Data(contentsOf: URL(fileURLWithPath:a[1]))).validated()
         let data = try JSONDecoder().decode(SavedRosterExport.self, from: Data(contentsOf: URL(fileURLWithPath:a[2])))
         guard catalog.sourceSHA256 == data.sourceSHA256,
@@ -26,7 +26,7 @@ import TacticsCore
         try JSONEncoder().encode(setup).write(to:folder.appendingPathComponent("league-setup.json"),options:.atomic)
         print("PASS \(setup.teams.count) teams / \(setup.teams.reduce(0){$0+$1.plan.players.count}) players / \(run.schedule.count) fixture preflights")
         fflush(stdout)
-        if a.count==7 {
+        if a.last=="--preflight-only" {
             run.status="尚未运行"
             try JSONEncoder().encode(run).write(to:folder.appendingPathComponent("run.json"),options:.atomic)
             print("PASS import and scenario validation only; no match engine executed")
@@ -35,15 +35,23 @@ import TacticsCore
         // One complete opening round exercises every imported squad.
         var seen = Set<UUID>()
         for (i,fixture) in run.schedule.enumerated() {
-            if seen.count == setup.teams.count {break}
+            if a.last != "--full-season" && seen.count == setup.teams.count {break}
             let scenario = try setup.scenario(fixture)
             let result = try OriginalMatchJob().run(helper:URL(fileURLWithPath:a[4]),app:URL(fileURLWithPath:a[5]),seed:run.firstSeed+UInt32(i),log:folder.appendingPathComponent("matches/\(i)/match.jsonl"),scenario:scenario)
             guard result.configurationSHA256 == scenario.sha256 else {throw LabError("引擎回读来源不一致。")}
+            if run.engineSHA256==nil {run.engineSHA256=result.engineSHA256}
+            guard run.engineSHA256==result.engineSHA256 else {throw LabError("Engine changed during league") }
             run.results.append(LeagueResult(season:1,fixture:fixture,report:result))
             seen.formUnion([fixture.home,fixture.away])
             print("PASS \(scenario.teams[0].name) \(result.score) \(scenario.teams[1].name)");fflush(stdout)
         }
-        run.status = "已停止"
+        run.status = run.results.count==run.expected ? "已完成":"已停止"
+        if a.last=="--full-season" {
+            precondition(run.results.count==run.expected)
+            let table=run.table(season:1)
+            precondition(table.allSatisfy{$0.played==2*(setup.teams.count-1)})
+            precondition(table.reduce(0){$0+$1.goalsFor}==table.reduce(0){$0+$1.goalsAgainst})
+        }
         _ = try run.validated()
         try JSONEncoder().encode(run).write(to:folder.appendingPathComponent("run.json"),options:.atomic)
         try Data(LeagueExport.html(run).utf8).write(to:folder.appendingPathComponent("report.html"),options:.atomic)

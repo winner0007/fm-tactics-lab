@@ -4,7 +4,7 @@
 
 在 Mac 上用本机 FM27 原版引擎测试战术：设置双方阵容，反复比赛，看球队和球员表现；也可以导入存档中的球队，跑完一个联赛，查看成绩与排名。
 
-这是 [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab) 的 fork。原项目提供 Windows 版战术编辑、存档对战和批量测试；我们在此基础上增加了 Mac 原生界面和引擎适配。当前版本 **0.6**，基于上游 **v1109.3 / `6cb32bf`**，沿用 [MIT 许可](LICENSE)。
+这是 [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab) 的 fork。原项目提供 Windows 版战术编辑、存档对战和批量测试；我们在此基础上增加了 Mac 原生界面和引擎适配。当前版本 **0.6.1**，基于上游 **v1109.3 / `6cb32bf`**，沿用 [MIT 许可](LICENSE)。
 
 ## 现在可以做什么
 
@@ -19,9 +19,9 @@
 
 ## 开始使用
 
-需要 Apple Silicon Mac、macOS 14+，以及本机完整安装的 FM27。目前适配游戏版本 **27.0.0.2493426**；游戏更新后可能需要重新适配。
+需要 Apple Silicon Mac、macOS 14+，以及本机完整安装的 FM27。目前适配游戏版本 **27.0.0.2493426、27.0.1.2503222**；游戏更新后可能需要重新适配。
 
-**27.0.1.2503222 的存档已能导入球队和赛程，比赛引擎仍待适配。** 使用这个游戏版本时可编辑和查看报告，模拟与 FMF 读写会停用，并显示具体版本提示。
+**0.6.1 已恢复新版游戏的原版模拟和战术 FMF 读写。** 更新游戏后请新建实验；旧报告可以查看，不与新版引擎混合续跑。
 
 打开应用后，先到「引擎与接入」查找游戏，再到「战术工作台」设置双方，填入场数并点击「运行比赛」。真实球队从顶部「从 FM 存档导入」选择，整赛季测试从「联赛实验」进入。详见 [Mac 使用说明](macos/README.md)。
 
@@ -32,16 +32,16 @@ git clone https://github.com/winner0007/fm-tactics-lab.git
 cd fm-tactics-lab
 bash macos/scripts/check.sh
 bash macos/scripts/build.sh
-open 'macos/dist/FM Tactics Lab 0.6.app'
+open 'macos/dist/FM Tactics Lab 0.6.1.app'
 ```
 
 ## 还没接通的部分
 
 原始 `.dat` 数据库、存档战术自动读取、定位球 FMF 交换和临场指挥尚未完成。初始阵容可通过游戏开档后立即保存的 `.fm` 导入。联赛每场重置开赛状态，不延续伤病、停赛、疲劳或转会；排名规则也暂不包含附加赛等特殊情况。助攻、评分等尚未核实的统计留空。
 
-已用真实存档的 **20 支球队跑完 380 场**，并验证批量比赛、停止续跑、数据恢复和存档导入。[验证记录](macos/docs/MAC_ENGINE_STATUS.md)列出了具体范围。
+新版引擎已用真实存档的 **24 支球队跑完 552 场**，并验证批量比赛、停止续跑、数据恢复和存档导入。[验证记录](macos/docs/MAC_ENGINE_STATUS.md)列出了具体范围。
 
-已核对上游 [v1112](https://github.com/lqf0624/fm-tactics-lab/releases/tag/v1112)。其持续运行宿主、原版 AI 战术生成、随机战术池及正式版 27.0.1 适配还没有移植到 Mac；具体差距和移植顺序见[开发说明](macos/docs/PORTING.md)。
+已核对上游 [v1112](https://github.com/lqf0624/fm-tactics-lab/releases/tag/v1112)。其持续运行宿主、原版 AI 战术生成和随机战术池还没有移植到 Mac；27.0.1.2503222 已单独完成 Mac arm64 适配。具体差距见[开发说明](macos/docs/PORTING.md)。
 
 ## 文档
 

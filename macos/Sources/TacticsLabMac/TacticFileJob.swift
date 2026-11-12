@@ -22,7 +22,7 @@ final class TacticFileJob: @unchecked Sendable {
         let lines=try String(contentsOf:log,encoding:.utf8).split(separator:"\n").compactMap{$0.data(using:.utf8)}
         let events=lines.compactMap{try? JSONSerialization.jsonObject(with:$0) as? [String:Any]}
         guard process.terminationStatus==0,!events.contains(where:{$0["event"] as? String=="failed" || $0["event"] as? String=="native_fault"}),
-              events.contains(where:{$0["event"] as? String=="original_engine_loaded" && $0["sha256"] as? String==OriginalMatchReport.engineHash}) else {
+              events.contains(where:{$0["event"] as? String=="original_engine_loaded" && OriginalMatchReport.supportsEngine($0["sha256"] as? String)}) else {
             let reason=events.last?["reason"] as? String ?? "引擎未完成读取／写入"
             throw LabError("FMF 操作未完成：\(reason)。当前配置和目标文件未改动。")
         }

@@ -57,9 +57,27 @@ final class ManagementAnalysisTests:XCTestCase {
         var engine=EngineReport(appPath:"/test/fm.app",version:"27.0.1.2503222",architectures:["arm64"],pluginFound:true,canSimulate:false,reason:"找到安装",diagnostics:[EngineDiagnostic(title:"资源",passed:true)])
         XCTAssertTrue(engine.filesReady);XCTAssertFalse(engine.adapterSupported)
         engine.binarySHA256="68adfde2e0588458c1830cb7e688855d9c61237973a7eb7a105af5ac4ed112a4"
+        XCTAssertTrue(engine.adapterSupported);XCTAssertFalse(engine.canSimulate)
+        engine.binarySHA256=String(repeating:"a",count:64)
         XCTAssertFalse(engine.adapterSupported);XCTAssertTrue(engine.compatibilityMessage.contains("尚未适配"))
         engine.binarySHA256=OriginalMatchReport.engineHash
         XCTAssertTrue(engine.adapterSupported);XCTAssertFalse(engine.canSimulate)
+    }
+
+    func testLeagueVersionPinSurvivesPersistence()throws {
+        var setup=LeagueSetup();setup.teams=(0..<2).map {i in var w=Workspace.example(includeOpponent:false);w.tactic.name="球队 \(i)";return LeagueTeam(plan:w)}
+        var run=try LeagueRun(setup:setup,seasons:1,seed:1)
+        try run.validateEngine(OriginalMatchReport.updatedEngineHash)
+        run.engineSHA256=OriginalMatchReport.updatedEngineHash
+        let restored=try JSONDecoder().decode(LeagueRun.self,from:JSONEncoder().encode(run))
+        try restored.validateEngine(OriginalMatchReport.updatedEngineHash)
+        XCTAssertThrowsError(try restored.validateEngine(OriginalMatchReport.engineHash))
+        XCTAssertThrowsError(try restored.validateEngine("unknown"))
+        var legacy=try JSONSerialization.jsonObject(with:JSONEncoder().encode(run)) as! [String:Any]
+        legacy.removeValue(forKey:"engineSHA256")
+        let old=try JSONDecoder().decode(LeagueRun.self,from:JSONSerialization.data(withJSONObject:legacy))
+        XCTAssertNil(old.engineSHA256)
+        try old.validateEngine(OriginalMatchReport.engineHash)
     }
 
     func testOpponentBreakdownCountsBothSidesAndKeepsSnapshots()throws {

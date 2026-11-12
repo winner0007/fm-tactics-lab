@@ -51,7 +51,7 @@ public enum LeagueExport {
     }
     public static func html(_ run:LeagueRun)->String {
         var body="<h1>"+escape(run.setup.name)+" · 联赛实验报告</h1>"
-        body+="<p>FM 原版引擎 · "+escape(run.status)+" · 有效 \(run.results.count) / \(run.expected) 场 · 完整赛季 \(run.completedSeasons.count) / \(run.seasons)</p>"
+        body+="<p>FM 原版引擎 "+escape(run.results.first?.report.engineVersion ?? "")+" · "+escape(run.status)+" · 有效 \(run.results.count) / \(run.expected) 场 · 完整赛季 \(run.completedSeasons.count) / \(run.seasons)</p>"
         body+="<p>"+escape(run.setup.rules.description)+"</p><p>"+escape(run.setup.rules.limitation)+"</p><p>来源："+escape(run.setup.source)+"</p>"
         if let failure=run.failure {body+="<p>未完成原因："+escape(failure)+"</p>"}
         if let source=run.setup.rules.ranking.source {body+="<p><a href='"+escape(source)+"'>积分与排名规则依据</a></p>"}

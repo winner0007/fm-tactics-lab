@@ -9,10 +9,11 @@ import time
 
 p=argparse.ArgumentParser()
 p.add_argument('app',type=Path)
-p.add_argument('--helper',type=Path,default=Path(__file__).resolve().parents[1]/'dist/FM Tactics Lab 0.6.app/Contents/MacOS/EngineRuntimeProbe')
+p.add_argument('--helper',type=Path,default=Path(__file__).resolve().parents[1]/'dist/FM Tactics Lab 0.6.1.app/Contents/MacOS/EngineRuntimeProbe')
+p.add_argument('--output',type=Path)
 a=p.parse_args()
 root=Path(__file__).resolve().parents[1]
-out=root/'.build/evidence-v04';out.mkdir(parents=True,exist_ok=True)
+out=a.output or root/'.build/evidence-v04';out.mkdir(parents=True,exist_ok=True)
 reports=[]
 for i,seed in enumerate([1131885006,1,1,2,3,4,5,4294967295,0]):
     run=subprocess.run([str(a.helper),str(a.app),'--seed',str(seed)],capture_output=True,timeout=60)

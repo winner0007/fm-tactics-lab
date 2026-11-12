@@ -148,13 +148,14 @@ extension LabStore {
         guard engine.adapterSupported else {error=engine.compatibilityMessage;return}
         guard !leagueRunning,!runningOriginal,!checkingNative,engine.filesReady,let path=engine.appPath,let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineRuntimeProbe") else{return}
         guard let seed=UInt32(leagueSeed) else {error="请输入有效的 32 位随机种子。";return}
-        let setup=leagueSetup,seasons=leagueSeasons,previous=leagueRun
+        let setup=leagueSetup,seasons=leagueSeasons,previous=leagueRun,expectedEngine=engine.binarySHA256!
         error=nil;leagueSection="积分与统计";leagueRunning=true;leagueCancelled=false;leagueProgress="正在校验全部球队与赛程…"
         Task {
             do {
                 var run:LeagueRun
                 if resume,let previous {run=try await Task.detached{try previous.validated()}.value;run.status="运行中";run.failure=nil}
                 else {run=try await Task.detached{try LeagueRun(setup:setup,seasons:seasons,seed:seed)}.value}
+                try run.validateEngine(expectedEngine);run.engineSHA256=expectedEngine
                 leagueRun=run
                 let folder=storage.appendingPathComponent("league-runs").appendingPathComponent(run.id.uuidString)
                 try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
@@ -168,6 +169,7 @@ extension LabStore {
                     do {
                         let log=folder.appendingPathComponent("matches").appendingPathComponent(String(format:"%05d",index)).appendingPathComponent("match.jsonl")
                         let report=try await Task.detached(priority:.userInitiated){try job.run(helper:helper,app:URL(fileURLWithPath:path),seed:current,log:log,scenario:scenario)}.value
+                        guard report.engineSHA256==expectedEngine else {throw LabError("游戏引擎在实验期间发生变化，已保留完成结果，请新建实验。") }
                         let result=LeagueResult(season:season,fixture:fixture,report:report)
                         try JSONEncoder().encode(result).write(to:log.deletingLastPathComponent().appendingPathComponent("result.json"),options:.atomic)
                         run.results.append(result);leagueRun=run

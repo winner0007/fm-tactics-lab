@@ -15,7 +15,7 @@ public enum BatchExport {
         }
         let title=(config?.teams[0].name ?? "内置测试主队")+" vs "+(config?.teams[1].name ?? "内置测试客队")
         var body="<h1>战术测试报告</h1><h2>"+escape(title)+"</h2>"
-        body+="<p>FM 原版引擎 · "+escape(batch?.status ?? "已完成")+" · 有效 \(matches.count) / 计划 \(batch?.requested ?? matches.count) 场</p>"
+        body+="<p>FM 原版引擎 "+escape(matches.first?.engineVersion ?? "")+" · "+escape(batch?.status ?? "已完成")+" · 有效 \(matches.count) / 计划 \(batch?.requested ?? matches.count) 场</p>"
         body+=table(["胜 / 平 / 负","胜率","95% 胜率区间","场均积分"],[["\(s.wins) / \(s.draws) / \(s.losses)",number(s.winRate*100)+"%",number(s.winInterval.lowerBound*100)+"% – "+number(s.winInterval.upperBound*100)+"%",number(s.points)]])
         body+="<p>固定阵容、对手和主客场；不同种子只衡量该配置的随机波动。小样本不能证明战术的普遍优势。未记录指标用 — 表示，不按零补全。</p>"
         if let failure=batch?.failure {body+="<p>未完成原因："+escape(failure)+"</p>"}

@@ -23,6 +23,12 @@ public struct OriginalMatchPoint: Codable, Equatable, Identifiable {
 /// Baseline fixture and bound workbench scenarios retain distinct provenance.
 public struct OriginalMatchReport: Codable, Equatable {
     public static let engineHash="774cacde63567fd3901c47719e7a6ed94cc3a0a62e9b94989dcac6b4890ec0e1"
+    public static let updatedEngineHash="68adfde2e0588458c1830cb7e688855d9c61237973a7eb7a105af5ac4ed112a4"
+    public static func supportsEngine(_ hash:String?) -> Bool {hash==engineHash || hash==updatedEngineHash}
+    public static func version(for hash:String) -> String {
+        hash==engineHash ? "27.0.0.2493426" : hash==updatedEngineHash ? "27.0.1.2503222" : "未适配版本"
+    }
+    public var engineVersion:String {Self.version(for:engineSHA256)}
     public let seed:UInt32
     public let engineSHA256:String
     public let completedAt:Date
@@ -42,11 +48,11 @@ public struct OriginalMatchReport: Codable, Equatable {
         guard data.count<=10_000_000,let text=String(data:data,encoding:.utf8) else {throw LabError("原版引擎日志过大或编码无效。")}
         let rows=try text.split(separator:"\n").map {try JSONDecoder().decode(EngineRuntimeEvent.self,from:Data($0.utf8))}
         if let failure=rows.last(where:{["failed","native_fault"].contains($0.event)}) {
-            if failure.reason=="unsupported_engine_binary" {throw LabError("此引擎文件不在已验证的适配范围内。当前支持 FM27 27.0.0.2493426 的指定 Mac 版本；游戏更新后需要重新适配。没有执行比赛。")}
+            if failure.reason=="unsupported_engine_binary" {throw LabError("此引擎文件不在已验证的适配范围内。当前支持 FM27 27.0.0.2493426 和 27.0.1.2503222 的指定 Mac 版本；游戏更新后需要重新适配。没有执行比赛。")}
             if failure.signal==14 {throw LabError("原版比赛超过 45 秒时限，已停止独立进程；本场未计入结果。日志已保留。")}
             throw LabError("原版引擎未完成比赛：\(failure.reason ?? failure.event)（\(failure.stage ?? "未知阶段")）。日志已保留。")
         }
-        guard exitCode==0,let loaded=rows.first(where:{$0.event=="original_engine_loaded"}),loaded.sha256==engineHash,loaded.architecture=="arm64",
+        guard exitCode==0,let loaded=rows.first(where:{$0.event=="original_engine_loaded"}),let hash=loaded.sha256,supportsEngine(hash),loaded.architecture=="arm64",
               rows.contains(where:{$0.event=="engine_bootstrap_returned" && $0.accepted==true}),
               rows.contains(where:{$0.event=="native_fixture_deserialized" && $0.accepted==true}),
               rows.contains(where:{$0.event=="native_input_seed" && $0.effectiveSeed==expectedSeed}),
@@ -90,7 +96,7 @@ public struct OriginalMatchReport: Codable, Equatable {
                 guard own.map(\.slot)==Array(scenario.teams[side].players.indices),own.map(\.playerID)==scenario.teams[side].players.map(\.id),own.map(\.name)==scenario.teams[side].players.map(\.name),Set(own.map(\.nativeID))==Set(players.filter{$0.side==side}.map(\.nativeID)) else {throw LabError("原版比赛名单与工作台快照不一致。")}
             }
         }
-        let result=Self(seed:expectedSeed,engineSHA256:engineHash,completedAt:Date(),elapsedSeconds:seconds,finalTick:tick,finalClock:clock,score:score,teams:teams,players:players,timeline:points,configuration:scenario,configurationSHA256:scenario?.sha256,roster:receipt?.roster)
+        let result=Self(seed:expectedSeed,engineSHA256:hash,completedAt:Date(),elapsedSeconds:seconds,finalTick:tick,finalClock:clock,score:score,teams:teams,players:players,timeline:points,configuration:scenario,configurationSHA256:scenario?.sha256,roster:receipt?.roster)
         _ = try Self.experiment([result]).validated()
         return result
     }
@@ -121,11 +127,12 @@ public struct OriginalMatchReport: Codable, Equatable {
             } else if r.configurationSHA256 != nil || r.roster != nil {throw LabError("保存报告缺少所声明的工作台配置。")}
         }
         guard !reports.isEmpty,reports.allSatisfy({r in
-            r.engineSHA256==engineHash && r.score.count==2 && r.teams.map(\.side).sorted()==[0,1] &&
+            supportsEngine(r.engineSHA256) && r.score.count==2 && r.teams.map(\.side).sorted()==[0,1] &&
             r.timeline.allSatisfy({$0.xg.count==2 && $0.score.count==2 && $0.xg.allSatisfy({$0.isFinite && $0>=0})})
         }) else {throw LabError("保存的原版比赛报告不完整。")}
+        guard Set(reports.map(\.engineSHA256)).count==1 else {throw LabError("不同游戏引擎版本的结果不能合并为同一个测试批次，请新建实验。") }
         guard Set(reports.map{$0.configurationSHA256 ?? "baseline"}).count==1 else {throw LabError("不同配置不能合并为同一个测试批次。")}
-        let variant=reports[0].configuration?.teams[0].name ?? "FM 原版内置基线",opponent=reports[0].configuration?.teams[1].name ?? "内置测试客队 · 27.0.0.2493426"
+        let variant=reports[0].configuration?.teams[0].name ?? "FM 原版内置基线",opponent=reports[0].configuration?.teams[1].name ?? "内置测试客队 · "+reports[0].engineVersion
         let metrics=StatMetric.team.filter{$0.id != "goals"}
         let header=["variant","seed","opponent","venue","goals_for","goals_against"]+metrics.flatMap{[$0.id+"_for",$0.id+"_against"]}
         var rows=[[String]]();rows.append(header)

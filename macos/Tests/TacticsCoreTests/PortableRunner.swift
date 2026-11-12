@@ -24,7 +24,8 @@ func XCTAssertThrowsError<T>(_ expression: @autoclosure () throws -> T, _ messag
         let management=ManagementAnalysisTests()
         let tests: [(String,() throws -> Void)] = [
             ("Team locks and replacement boundaries",management.testLocksProtectReplacementAndAllowPersonnel),
-            ("New engine binary never inherits old compatibility",management.testInstalledFilesDoNotAuthorizeNewEngine),
+            ("Only exact verified engine profiles accepted",management.testInstalledFilesDoNotAuthorizeNewEngine),
+            ("League engine version pinned across resume",management.testLeagueVersionPinSurvivesPersistence),
             ("Tactic execution fingerprints",management.testTacticFingerprintUsesExecutionNotNamesOrAbility),
             ("Opponent tactics breakdown and frozen reports",management.testOpponentBreakdownCountsBothSidesAndKeepsSnapshots),
             ("Full independent named team snapshots",files.testTeamPresetRetainsFullTeamWithoutOpponent),
