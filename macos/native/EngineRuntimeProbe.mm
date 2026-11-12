@@ -53,6 +53,9 @@ static NSString *hashFile(NSString *path) {
 
 #include "EngineScenario.h"
 #include "EngineTactics.h"
+#include "EngineStatistics.h"
+#include "EngineStrategy.h"
+#include "EngineGoals.h"
 
 // Plain statistics records retain their field layout on this profile. Verified
 // against Mac producers: 493eaf4 (xG), 493d140/493d668 (shots),
@@ -72,14 +75,27 @@ static void emitStatistics(unsigned char *context) {
         auto start=*(unsigned char***)(stats+0x250),end=*(unsigned char***)(stats+0x258);
         if(end<start||end-start<11||end-start>26) fail("invalid_player_statistics_vector",82);
         NSMutableSet *ids=[NSMutableSet set];
-        unsigned sumShots=0,sumTarget=0,sumPasses=0,sumComplete=0,yellow=0,red=0;double sumXg=0;
+        unsigned sumShots=0,sumTarget=0,sumPasses=0,sumComplete=0,sumCrosses=0,sumCompletedCrosses=0,yellow=0,red=0;double sumXg=0;
         for(auto p=start;p!=end;p++) {
             auto row=*p; NSNumber *identity=@(*(uint32_t*)(row+0x18));
             if([ids containsObject:identity]) fail("duplicate_player_statistics_identity",82);
             [ids addObject:identity];
             double pxg=*(float*)(row+0x1c);
             if(!std::isfinite(pxg)||pxg<0||pxg>100||row[0x91]>row[0x90]||row[0xbb]>row[0xba]) fail("invalid_player_statistics",82);
-            NSDictionary *values=@{@"goals":@(row[0x8b]),@"shots":@(row[0x90]),@"shots_on_target":@(row[0x91]),@"passes":@(row[0xba]),@"completed_passes":@(row[0xbb]),@"xg":@(pxg),@"yellow_cards":@(row[0xa6]),@"red_cards":@(row[0xa7])};
+            NSMutableDictionary *values=[@{@"goals":@(row[0x8b]),@"shots":@(row[0x90]),@"shots_on_target":@(row[0x91]),@"passes":@(row[0xba]),@"completed_passes":@(row[0xbb]),@"xg":@(pxg),@"yellow_cards":@(row[0xa6]),@"red_cards":@(row[0xa7])} mutableCopy];
+            if(engine2503222) {
+                values[@"crosses"]=@(unsigned(row[0x9a])+row[0x9b]);values[@"completed_crosses"]=@(row[0x9a]);
+                sumCrosses+=unsigned(row[0x9a])+row[0x9b];sumCompletedCrosses+=row[0x9a];
+            }
+            if(finalGoals) {
+                unsigned assists=0,goals=0;
+                for(NSDictionary *g in finalGoals)if([g[@"side"] unsignedIntValue]==side) {
+                    if([g[@"nativeID"] isEqual:identity]&&[g[@"type"] intValue]!=1)goals++;
+                    if([g[@"assistID"] isEqual:identity])assists++;
+                }
+                if(goals!=row[0x8b])fail("final_goals_player_mismatch",82);
+                values[@"assists"]=@(assists);
+            }
             bool selected=!scenario;
             if(scenario)for(NSDictionary *p in scenarioRoster)if([p[@"side"] unsignedIntValue]==side&&[p[@"nativeID"] isEqual:identity])selected=true;
             if(selected)[players addObject:@{@"side":@(side),@"nativeID":identity,@"statistics":values}];
@@ -87,7 +103,12 @@ static void emitStatistics(unsigned char *context) {
             sumShots+=row[0x90];sumTarget+=row[0x91];sumPasses+=row[0xba];sumComplete+=row[0xbb];sumXg+=pxg;yellow+=row[0xa6];red+=row[0xa7];
         }
         if(sumShots!=shots||sumTarget!=onTarget||sumPasses!=passes||sumComplete!=complete||fabs(sumXg-xg)>0.001) fail("team_player_statistics_mismatch",82);
-        [teams addObject:@{@"side":@(side),@"statistics":@{@"xg":@(xg),@"shots":@(shots),@"shots_on_target":@(onTarget),@"passes":@(passes),@"completed_passes":@(complete),@"possession":@(100.0*(*(unsigned*)(stats+0x7c))/total),@"yellow_cards":@(yellow),@"red_cards":@(red)}}];
+        NSMutableDictionary *values=[@{@"xg":@(xg),@"shots":@(shots),@"shots_on_target":@(onTarget),@"passes":@(passes),@"completed_passes":@(complete),@"possession":@(100.0*(*(unsigned*)(stats+0x7c))/total),@"yellow_cards":@(yellow),@"red_cards":@(red)} mutableCopy];
+        if(engine2503222) {
+            if(sumCrosses!=unsigned(stats[0x17f])+stats[0x180]||sumCompletedCrosses!=stats[0x17f])fail("team_player_crosses_mismatch",82);
+            [values addEntriesFromDictionary:cumulativeStatistics(stats)];
+        }
+        [teams addObject:@{@"side":@(side),@"statistics":values}];
     }
     event(@"native_match_statistics",@{@"teams":teams,@"players":players,@"totalsVerified":@YES});
 }
@@ -124,6 +145,7 @@ int main(int argc, char **argv) {
         begin("verify_engine_profile");
         NSString *hash=hashFile(plugin);
         if (!selectEngineProfile(hash)) fail("unsupported_engine_binary",65);
+        if([scenario[@"schemaVersion"] isEqual:@2]&&!engine2503222)fail("strategy_requires_updated_engine",65);
         begin("load_original_engine");
         void *handle=dlopen(plugin.fileSystemRepresentation,RTLD_NOW|RTLD_LOCAL);
         if (!handle) fail(dlerror(),66);
@@ -262,11 +284,14 @@ int main(int argc, char **argv) {
             }
             if(flags&4) {
                 if(clock<21600||home<0||away<0) fail("invalid_finished_result",80);
+                collectGoals(context,home,away);
                 emitStatistics(context);
+                if(engine2503222)event(@"native_analysis_verified",@{@"analysisVersion":@2,@"strategySwitchCount":@(strategySwitchCount)});
                 event(@"natural_match_finished",@{@"fullMatchCompleted":@YES,@"tick":@(tick),@"clock":@(clock),@"elapsedClock":@(elapsedClock),@"flags":@(flags),@"score":@[@(home),@(away)],@"matchesExecuted":@1,@"source":@"fm_original_engine",@"input":scenario?@"workbench_scenario":@"bundled_test_fixture",@"clockTicksPerMinute":@240,@"seed":@(*(uint32_t*)(match+0x18)),@"elapsedSeconds":@(NSProcessInfo.processInfo.systemUptime-started),@"workbenchApplied":@(scenario!=nil),@"schemaVersion":@(scenario?2:1),@"configurationSHA256":scenarioHash?:@""});
                 _exit(0);
             }
             if(tick>=47995) fail("watchdog_boundary_rejected",77);
+            evaluateStrategies(match,elapsedClock,home,away);
             int target=tick+1;
             call<void>(0x448a2f4,match,unsigned(1),target);
             int after=*(int*)(match+0x154dc);

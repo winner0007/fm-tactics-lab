@@ -7,3 +7,4 @@
 *.cs text eol=crlf
 *.cpp text eol=crlf
 *.h text eol=crlf
+macos/native/*.h text eol=lf

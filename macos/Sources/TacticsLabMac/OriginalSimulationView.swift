@@ -18,6 +18,7 @@ struct OriginalSimulationCard:View {
                 TextField("0–4294967295",text:$store.originalSeed).frame(width:130).textFieldStyle(.roundedBorder).disabled(store.runningOriginal)
                 Text("场数")
                 TextField("1–2000",value:$store.originalCount,format:.number.grouping(.never)).frame(width:80).textFieldStyle(.roundedBorder).disabled(store.runningOriginal)
+                ConcurrencyControl()
                 Button(store.runningOriginal ? "原版引擎计算中…" : "开始原版模拟",action:store.runOriginalMatches).buttonStyle(.borderedProminent).disabled(store.editedLeagueTeam != nil || store.runningOriginal || store.leagueRunning || !store.engine.adapterSupported || store.engineSearching)
                 if store.runningOriginal {
                     ProgressView().controlSize(.small)
@@ -29,7 +30,8 @@ struct OriginalSimulationCard:View {
             if store.editedLeagueTeam != nil {Text("当前编辑的是联赛球队，请到“联赛实验”运行；普通对战需先切换编辑范围。").font(.caption).foregroundStyle(Theme.muted)}
             if store.runningOriginal {Text(store.originalProgress).font(.system(size:12)).foregroundStyle(Theme.green)}
             if !store.engine.adapterSupported {Text(store.engine.compatibilityMessage).font(.system(size:12)).foregroundStyle(Theme.amber)}
-            Text("每场使用独立进程；多场依次递增种子。适配版本：27.0.0.2493426、27.0.1.2503222 / Apple Silicon，其他二进制版本会停止运行。").font(.system(size:11)).foregroundStyle(Theme.muted)
+            if let batch=store.batch,batch.completed<batch.requested,!store.runningOriginal {Button("继续本批次（保留原配置，只补缺失比赛）",action:store.resumeOriginalMatches).disabled(store.leagueRunning)}
+            Text("各通道使用独立引擎进程，种子按比赛编号固定。停止后可续跑，已完成场次会保留。").font(.system(size:11)).foregroundStyle(Theme.muted)
             if let report=store.originalMatch {
                 Divider()
                 HStack {

@@ -42,12 +42,17 @@ public struct OriginalMatchReport: Codable, Equatable {
     public var configuration:NativeScenario? = nil
     public var configurationSHA256:String? = nil
     public var roster:[OriginalRosterIdentity]? = nil
+    public var analysisVersion:Int? = nil
+    public var goals:[OriginalGoal]? = nil
+    public var strategyEvents:[OriginalStrategySwitch]? = nil
     public var minute:Double {Double(finalClock)/240}
 
     public static func parse(_ data:Data,exitCode:Int32,expectedSeed:UInt32,scenario:NativeScenario?=nil) throws -> Self {
         guard data.count<=10_000_000,let text=String(data:data,encoding:.utf8) else {throw LabError("原版引擎日志过大或编码无效。")}
-        let rows=try text.split(separator:"\n").map {try JSONDecoder().decode(EngineRuntimeEvent.self,from:Data($0.utf8))}
+        let lines=text.split(separator:"\n")
+        let rows=try lines.map {try JSONDecoder().decode(EngineRuntimeEvent.self,from:Data($0.utf8))}
         if let failure=rows.last(where:{["failed","native_fault"].contains($0.event)}) {
+            if failure.reason=="strategy_requires_updated_engine" {throw LabError("临场三方案切换目前已验证 FM 27.0.1.2503222。请更新游戏，或关闭临场策略运行固定战术。")}
             if failure.reason=="unsupported_engine_binary" {throw LabError("此引擎文件不在已验证的适配范围内。当前支持 FM27 27.0.0.2493426 和 27.0.1.2503222 的指定 Mac 版本；游戏更新后需要重新适配。没有执行比赛。")}
             if failure.signal==14 {throw LabError("原版比赛超过 45 秒时限，已停止独立进程；本场未计入结果。日志已保留。")}
             throw LabError("原版引擎未完成比赛：\(failure.reason ?? failure.event)（\(failure.stage ?? "未知阶段")）。日志已保留。")
@@ -96,7 +101,14 @@ public struct OriginalMatchReport: Codable, Equatable {
                 guard own.map(\.slot)==Array(scenario.teams[side].players.indices),own.map(\.playerID)==scenario.teams[side].players.map(\.id),own.map(\.name)==scenario.teams[side].players.map(\.name),Set(own.map(\.nativeID))==Set(players.filter{$0.side==side}.map(\.nativeID)) else {throw LabError("原版比赛名单与工作台快照不一致。")}
             }
         }
-        let result=Self(seed:expectedSeed,engineSHA256:hash,completedAt:Date(),elapsedSeconds:seconds,finalTick:tick,finalClock:clock,score:score,teams:teams,players:players,timeline:points,configuration:scenario,configurationSHA256:scenario?.sha256,roster:receipt?.roster)
+        var result=Self(seed:expectedSeed,engineSHA256:hash,completedAt:Date(),elapsedSeconds:seconds,finalTick:tick,finalClock:clock,score:score,teams:teams,players:players,timeline:points,configuration:scenario,configurationSHA256:scenario?.sha256,roster:receipt?.roster)
+        if let analysis=rows.last(where:{$0.event=="native_analysis_verified"}) {
+            let detail=rows.last(where:{$0.event=="native_final_goals"})
+            guard detail?.verified==true,detail?.source=="original_final_result_and_incident_registry",let goals=detail?.goals else {throw LabError("缺少已验证的终场进球明细。")}
+            let changes=try rows.indices.filter{rows[$0].event=="native_strategy_switch"}.map{try JSONDecoder().decode(OriginalStrategySwitch.self,from:Data(lines[$0].utf8))}
+            guard analysis.strategySwitchCount==changes.count else {throw LabError("临场切换记录丢失。")}
+            result.analysisVersion=analysis.analysisVersion;result.goals=goals;result.strategyEvents=changes
+        }
         _ = try Self.experiment([result]).validated()
         return result
     }
@@ -113,9 +125,12 @@ public struct OriginalMatchReport: Codable, Equatable {
             for team in r.teams {
                 let own=r.players.filter{$0.side==team.side}
                 guard (11...26).contains(own.count),Set(own.map(\.nativeID)).count==own.count,(team.statistics["goals"].map{$0==Double(r.score[team.side])} ?? true) else {throw LabError("保存报告的名单或比分统计不一致。")}
-                for key in ["shots","shots_on_target","passes","completed_passes","xg","yellow_cards","red_cards"] {
+                let additional=(r.analysisVersion==2 || team.statistics["crosses"] != nil || own.contains{$0.statistics["crosses"] != nil}) ? ["crosses","completed_crosses"]:[]
+                for key in ["shots","shots_on_target","passes","completed_passes","xg","yellow_cards","red_cards"]+additional {
                     guard let v=team.statistics[key],v.isFinite,v>=0,own.allSatisfy({$0.statistics[key].map{$0.isFinite && $0>=0}==true}),abs(own.reduce(0){$0+($1.statistics[key] ?? 0)}-v)<0.001 else {throw LabError("保存报告的球队与球员合计不一致：\(key)。")}
                 }
+                try validateStatRelations(team.statistics,row:team.side+1)
+                for player in own {try validateStatRelations(player.statistics,row:team.side+1)}
             }
             if let c=r.configuration {
                 _ = try c.validated()
@@ -125,6 +140,7 @@ public struct OriginalMatchReport: Codable, Equatable {
                     guard ids.map(\.slot)==Array(c.teams[side].players.indices),ids.map(\.playerID)==c.teams[side].players.map(\.id),ids.map(\.name)==c.teams[side].players.map(\.name),Set(ids.map(\.nativeID))==Set(r.players.filter{$0.side==side}.map(\.nativeID)) else {throw LabError("保存报告的球员身份与配置不一致。")}
                 }
             } else if r.configurationSHA256 != nil || r.roster != nil {throw LabError("保存报告缺少所声明的工作台配置。")}
+            try r.validateAnalysis()
         }
         guard !reports.isEmpty,reports.allSatisfy({r in
             supportsEngine(r.engineSHA256) && r.score.count==2 && r.teams.map(\.side).sorted()==[0,1] &&
@@ -172,4 +188,5 @@ private struct EngineRuntimeEvent:Decodable {
     let gates:[Int]?,score:[Int]?,xg:[Double]?
     let teams:[OriginalTeamStatistics]?,players:[OriginalPlayerStatistics]?
     let configurationSHA256:String?,afterOriginalPreparation:Bool?,roster:[OriginalRosterIdentity]?
+    let analysisVersion:Int?,strategySwitchCount:Int?,verified:Bool?,goals:[OriginalGoal]?
 }

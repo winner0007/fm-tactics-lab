@@ -10,6 +10,8 @@ public struct SimulationBatch:Codable,Equatable {
     public var configuration:NativeScenario?
     public var status="运行中"
     public var failure:String?
+    public var engineSHA256:String?
+    public var workers:Int?
     public init(requested:Int,firstSeed:UInt32,configuration:NativeScenario?) {self.requested=requested;self.firstSeed=firstSeed;self.configuration=configuration}
 }
 public struct BatchSummary {

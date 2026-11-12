@@ -12,6 +12,7 @@ public enum MatchVenue: String, CaseIterable, Identifiable {
 
 extension NativeTeamInput {
     private func sameTactic(as other:Self,grouping:TacticGrouping)->Bool {
+        guard strategy==other.strategy else{return false}
         if grouping == .shape {return phases.map{$0.map(\.position)}==other.phases.map{$0.map(\.position)}}
         return mentality==other.mentality && extraTeamBits==other.extraTeamBits && instructions==other.instructions && phases==other.phases && setPieces==other.setPieces
     }
@@ -23,6 +24,11 @@ extension NativeTeamInput {
             return ["position":cell.position,"role":cell.role,"instructions":cell.instructions.sorted(),"targetPlayer":cell.targetPlayer,"targetPosition":cell.targetPosition]
         }}
         var value:[String:Any]=["phases":cells]
+        if let strategy {
+            value["strategy"]=["kickoff":strategy.kickoffSlot,"cooldown":strategy.cooldownMinutes,"return":strategy.returnToKickoff,
+                "plans":strategy.plans.map{withTactic($0).tacticKey(grouping)},
+                "rules":strategy.rules.map{["from":$0.fromMinute,"through":$0.throughMinute,"condition":$0.condition,"margin":$0.margin,"target":$0.target]}]
+        }
         if grouping == .exact {
             value["mentality"]=mentality
             value["extraTeamBits"]=extraTeamBits ?? String(repeating:"0",count:32)
@@ -35,6 +41,7 @@ extension NativeTeamInput {
         return SHA256.hash(data:data).map{String(format:"%02x",$0)}.joined()
     }
     public var shapeLabel:String {
+        if let strategy {return "动态策略 · "+strategy.plans.map(\.formation).joined(separator:" → ")}
         func label(_ phase:Int,_ name:String)->String {
             if name != "自定义" {return name}
             return phases[phase].map{c in NativeCatalog.positions.first{$0.mask==c.position}?.id ?? "?"}.joined(separator:"·")
@@ -58,6 +65,9 @@ public struct TacticPerformance:Identifiable {
     public var opponents:Set<String>=[]
     public var ownAbilityTotal=0.0,opponentAbilityTotal=0.0,opponentAbilityMin=Double.infinity,opponentAbilityMax = -Double.infinity
     public var xgFor=0.0,xgAgainst=0.0,xgGames=0
+    public var reports:[OriginalMatchReport]=[]
+    public var focusSides:[UInt32:Int]=[:]
+    public var impact:TacticalImpact {TacticalImpact(reports,focusSides:focusSides)}
     public var winRate:Double {Double(wins)/Double(max(1,games))}
     public var pointsPerGame:Double {Double(wins*3+draws)/Double(max(1,games))}
     public var ownAbility:Double {ownAbilityTotal/Double(max(1,games))}
@@ -80,6 +90,7 @@ public struct TacticPerformance:Identifiable {
             var row=values[key] ?? Self(id:key,ownKey:ownKey,opponentKey:otherKey,opponentShape:other.shapeLabel)
             let gf=result.report.score[side],ga=result.report.score[1-side]
             row.games+=1;row.goalsFor+=gf;row.goalsAgainst+=ga
+            row.reports.append(result.report);row.focusSides[result.report.seed]=side
             if gf>ga {row.wins+=1} else if gf==ga {row.draws+=1} else {row.losses+=1}
             if side==0 {row.homeGames+=1} else {row.awayGames+=1}
             row.opponents.insert(other.name)

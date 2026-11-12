@@ -65,7 +65,7 @@ static void extraTeamBits(NSDictionary *t,unsigned char *bits) {
 
 static void validateScenario() {
     if(!scenario)return;
-    if(![scenario isKindOfClass:NSDictionary.class]||![scenario[@"schemaVersion"] isEqual:@1]||![scenario[@"teams"] isKindOfClass:NSArray.class]||[scenario[@"teams"] count]!=2) fail("invalid_scenario_schema",83);
+    if(![scenario isKindOfClass:NSDictionary.class]||(![scenario[@"schemaVersion"] isEqual:@1]&&![scenario[@"schemaVersion"] isEqual:@2])||![scenario[@"teams"] isKindOfClass:NSArray.class]||[scenario[@"teams"] count]!=2) fail("invalid_scenario_schema",83);
     for(NSDictionary *t in scenario[@"teams"]) {
         if(![t isKindOfClass:NSDictionary.class]||!number(t[@"mentality"],7)||[t[@"mentality"] intValue]<1) fail("invalid_scenario_team",83);
         NSArray *players=t[@"players"],*phases=t[@"phases"],*instructions=t[@"instructions"];
@@ -125,6 +125,34 @@ static void validateScenario() {
             }
         }
     }
+    NSDictionary *original=scenario;
+    bool hasStrategy=false;
+    for(unsigned side=0;side<2;side++) {
+        NSDictionary *t=original[@"teams"][side],*s=t[@"strategy"];if(!s)continue;hasStrategy=true;
+        if(![s isKindOfClass:NSDictionary.class]||![s[@"plans"] isKindOfClass:NSArray.class]||[s[@"plans"] count]!=3||
+           !number(s[@"kickoffSlot"],2)||!number(s[@"cooldownMinutes"],30)||[s[@"cooldownMinutes"] intValue]<1||
+           ![s[@"returnToKickoff"] isKindOfClass:NSNumber.class]||CFGetTypeID((__bridge CFTypeRef)s[@"returnToKickoff"])!=CFBooleanGetTypeID()||
+           ![s[@"rules"] isKindOfClass:NSArray.class]||[s[@"rules"] count]>12)fail("invalid_strategy",83);
+        NSMutableSet *ids=[NSMutableSet set];
+        for(NSDictionary *r in s[@"rules"]) {
+            if(![r isKindOfClass:NSDictionary.class]||![r[@"id"] isKindOfClass:NSString.class]||[r[@"id"] length]>80||[ids containsObject:r[@"id"]]||
+               !number(r[@"fromMinute"],120)||!number(r[@"throughMinute"],120)||[r[@"throughMinute"] intValue]<[r[@"fromMinute"] intValue]||
+               !number(r[@"condition"],5)||!number(r[@"margin"],10)||[r[@"margin"] intValue]<1||!number(r[@"target"],2))fail("invalid_strategy_rule",83);
+            [ids addObject:r[@"id"]];
+        }
+        NSArray *keys=@[@"mentality",@"formation",@"defendingFormation",@"instructions",@"phases",@"extraTeamBits"];
+        for(unsigned plan=0;plan<3;plan++) {
+            NSDictionary *p=s[@"plans"][plan];if(![p isKindOfClass:NSDictionary.class])fail("invalid_strategy_plan",83);
+            NSMutableArray *pair=[NSMutableArray array];
+            for(NSDictionary *team in original[@"teams"]) {NSMutableDictionary *copy=[team mutableCopy];[copy removeObjectForKey:@"strategy"];[pair addObject:copy];}
+            for(NSString *key in keys) {
+                if(p[key])pair[side][key]=p[key];else [pair[side] removeObjectForKey:key];
+                if(plan==[s[@"kickoffSlot"] unsignedIntValue] && (p[key]||t[key]) && ![p[key] isEqual:t[key]])fail("strategy_kickoff_mismatch",83);
+            }
+            scenario=@{@"schemaVersion":@1,@"teams":pair};validateScenario();scenario=original;
+        }
+    }
+    if(hasStrategy != [original[@"schemaVersion"] isEqual:@2])fail("strategy_schema_mismatch",83);
 }
 static uint64_t instructionFlags(NSDictionary *cell) {uint64_t v=0;for(NSNumber *n in cell[@"instructions"])v|=1ULL<<n.unsignedIntValue;return v;}
 static uint64_t markingTarget(NSDictionary *cell) {return (uint64_t([cell[@"targetPlayer"] unsignedIntValue])<<32)|[cell[@"targetPosition"] unsignedIntValue];}

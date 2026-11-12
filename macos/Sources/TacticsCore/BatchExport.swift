@@ -20,6 +20,7 @@ public enum BatchExport {
         body+="<p>固定阵容、对手和主客场；不同种子只衡量该配置的随机波动。小样本不能证明战术的普遍优势。未记录指标用 — 表示，不按零补全。</p>"
         if let failure=batch?.failure {body+="<p>未完成原因："+escape(failure)+"</p>"}
         body+="<h2>双方场均数据</h2>"+table(["指标","本队","对手"],StatMetric.team.map{[$0.title,number(s.mean($0.id,side:0)),number(s.mean($0.id,side:1))]})
+        body+=MatchAnalysisExport.html(matches)
         var wins=0
         let points=matches.enumerated().map{i,r -> String in
             if r.score[0]>r.score[1] {wins+=1}

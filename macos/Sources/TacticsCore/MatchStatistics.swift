@@ -10,6 +10,7 @@ public struct StatMetric:Identifiable {
     public static let team:[StatMetric] = [
         .init("goals","进球",100),.init("xg","预期进球 xG",100,false),.init("possession","控球率",100,false,"%"),
         .init("shots","射门"),.init("shots_on_target","射正"),.init("passes","传球"),.init("completed_passes","成功传球"),
+        .init("crosses","传中"),.init("completed_crosses","成功传中"),
         .init("corners","角球"),.init("fouls","犯规"),.init("offsides","越位"),.init("tackles","抢断"),.init("interceptions","拦截"),
         .init("saves","扑救"),.init("yellow_cards","黄牌"),.init("red_cards","红牌")
     ]
@@ -17,6 +18,7 @@ public struct StatMetric:Identifiable {
         .init("minutes","出场分钟",150,false),.init("rating","评分",10,false),.init("goals","进球",100),.init("assists","助攻",100),
         .init("xg","xG",100,false),.init("xa","xA",100,false),.init("shots","射门"),.init("shots_on_target","射正"),
         .init("passes","传球"),.init("completed_passes","成功传球"),.init("key_passes","关键传球"),.init("chances_created","创造机会"),
+        .init("crosses","传中"),.init("completed_crosses","成功传中"),
         .init("tackles","抢断"),.init("interceptions","拦截"),.init("headers_won","争顶成功"),.init("dribbles","成功盘带"),
         .init("distance_km","跑动距离",50,false," km"),.init("saves","扑救"),.init("conceded","失球",100),
         .init("yellow_cards","黄牌",2),.init("red_cards","红牌",1)
@@ -67,7 +69,7 @@ public struct PlayerMatchRecord:Codable,Equatable,Identifiable {
 }
 
 public func validateStatRelations(_ stats:[String:Double],row:Int) throws {
-    for (part,total) in [("shots_on_target","shots"),("completed_passes","passes")] {
+    for (part,total) in [("shots_on_target","shots"),("completed_passes","passes"),("completed_crosses","crosses")] {
         if let a=stats[part],let b=stats[total],a>b {throw LabError("第 \(row) 行 \(part) 不能大于 \(total)。")}
     }
 }

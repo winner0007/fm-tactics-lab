@@ -35,7 +35,7 @@ extension Workspace {
         if management.coachLocked && management.coach != next.management.coach {
             throw LabError("主教练已锁定，请先解锁再更换。")
         }
-        if management.tacticLocked && tactic.lockedContent != next.tactic.lockedContent {
+        if management.tacticLocked && (lockedStrategy != next.lockedStrategy || (matchStrategy==nil && tactic.lockedContent != next.tactic.lockedContent)) {
             throw LabError("战术已锁定，请先解锁再修改阵型、角色、指令或定位球。")
         }
         if let other=opponent,let replacement=next.opponent {try other.workspace.checkReplacement(replacement.workspace)}

@@ -20,6 +20,7 @@
 | `team-presets/archived/` | 归档方案的原文件，可通过方案库重新导入 |
 | `tactic-files/<操作 ID>/` | FMF 源文件、原版序列化数据、回读日志与核验结果 |
 | `workspace.json` | 普通对战的主队、对手、战术及对照方案 |
+| `simulation-workers.json` | 上次选择的并行通道数，范围 1–256 |
 | `league-setup.json` | 当前联赛球队、规则和赛程 |
 | `editing-league-team.json` | 当前编辑的联赛球队 ID，重开应用可恢复 |
 | `league-setup-backups/` | 导入另一套联赛前保存的原配置，可用初始化 JSON 入口恢复 |
@@ -30,15 +31,17 @@
 | `original-matches.json`、`latest-batch.json`、`latest-league.json` | 最近查看的比赛和实验索引 |
 | `save-imports/` | 从用户存档读取的球队目录与阵容 |
 
-逐场结果先写入，再更新汇总。若应用意外退出，联赛会恢复汇总之后已完成的比赛；普通测试可从历史批次读取这些结果。文件采用原子写入，未完赛比赛不计入统计。报告页的“打开保存位置”可找到整个联赛实验。
+逐场结果先写入，再更新汇总。并行比赛可能乱序完成，目录序号和种子仍对应固定对阵；恢复时扫描所有已完成场次，续跑只补缺失项，不假设结果连续。停止会取消当前批次拥有的子进程，已自然完赛且校验通过的结果仍保留。文件采用原子写入，未完赛比赛不计入统计。报告页的“打开保存位置”可找到整个联赛实验。
 
-方案格式为 `tactics-lab-mac/4`，兼容读入 1–3，升级前留备份。旧版指令草稿和定位球需核对后改用原版设置。新版文件不能交给旧版应用编辑。
+方案格式为 `tactics-lab-mac/5`，兼容读入 1–4，升级前留备份。新增可选 `matchStrategy`，保存三套方案、名称、当前编辑／开场方案、冷却间隔和规则。旧版指令草稿和定位球需核对后改用原版设置。新版文件不能交给旧版应用编辑。
+
+原版比赛输入 `NativeScenario`：固定战术仍用版本 1，包含临场策略时使用版本 2。报告的 `analysisVersion` 独立于输入格式：1 包含终场进球和切换事件，2 另含切换时双方累计统计及终场控球时长。`goals` 和 `strategyEvents` 缺失表示旧报告未记录，不能视为没有事件。JSON 保留全部明细；CSV 保留逐场球队／球员统计，HTML 展示图表与事件。
 
 方案库每次“保存为新方案”新建一份文件；载入只替换当前球队，导入文件总是加入新副本。修改工作台不会反向更新已保存方案。损坏文件保留并提示，不会用空数据覆盖。
 
 ## 导出怎么选
 
-- 在游戏里载入战术：工作台导出 FMF，只包含双阶段阵型、角色、职责、心态及指令。球员属性和定位球另存完整方案。
+- 在游戏里载入战术：工作台导出当前编辑方案的 FMF，只包含双阶段阵型、角色、职责、心态及指令。球员属性、定位球、三套方案和切换规则另存完整球队 JSON。
 - 复用完整单队：阵容方案库 JSON；普通对战的完整方案 JSON 包含双方，两种格式使用各自入口。
 - 给人看结果：HTML 报告，包含图表、成绩与实际使用的球队配置。
 - 继续分析：球队／球员 CSV；保存完整实验用 JSON。
@@ -58,9 +61,11 @@
 
 样例 `samples/players.csv` 为虚构名单；`samples/demo-results.csv` 为人工测试数据，可验证导入界面，不可用于战术结论。
 
-扩展球队指标：`possession`、`shots`、`shots_on_target`、`passes`、`completed_passes`、`corners`、`fouls`、`offsides`、`tackles`、`interceptions`、`saves`、`yellow_cards`、`red_cards`，均以 `_for` / `_against` 区分本队和对手。控球率使用 0–100 百分数；成功传球不能多于传球、射正不能多于射门。`goals_for` 与 `goals_against` 必需，其余可留空。
+扩展球队指标：`possession`、`shots`、`shots_on_target`、`passes`、`completed_passes`、`crosses`、`completed_crosses`、`corners`、`fouls`、`offsides`、`tackles`、`interceptions`、`saves`、`yellow_cards`、`red_cards`，均以 `_for` / `_against` 区分本队和对手。控球率使用 0–100 百分数；成功传球／传中不能多于尝试次数、射正不能多于射门。`goals_for` 与 `goals_against` 必需，其余可留空。模板支持某一列，不等于原版适配器已经能读取该指标。
 
-球员赛后 CSV：先导入球队比赛，再导入球员文件。通过 `variant,seed,opponent,venue` 关联比赛；必填 `player_id,player_name,team`（`for` / `against`）。支持出场分钟、评分、进球、助攻、xG、xA、射门、射正、传球、成功传球、关键传球、创造机会、抢断、拦截、争顶、盘带、跑动公里、扑救、失球与红黄牌。程序可导出完整表头；没有对应比赛或同场球员重复时拒绝导入。不是 FM 原生导出格式，需要按模板整理。
+0.7 原版报告新增球队及球员 `crosses` / `completed_crosses`；JSON 还保存内部 `possession_ticks`，用于临场分段控球率，不作为 CSV 球队指标。每个切换事件的 `statistics` 是主、客队两个字典。完整战术分组、整场场均和分段每 90 分钟的计算见[统计口径](TACTICS_AND_AI.md#报告怎么看)。
+
+球员赛后 CSV：先导入球队比赛，再导入球员文件。通过 `variant,seed,opponent,venue` 关联比赛；必填 `player_id,player_name,team`（`for` / `against`）。支持出场分钟、评分、进球、助攻、xG、xA、射门、射正、传球、成功传球、传中、成功传中、关键传球、创造机会、抢断、拦截、争顶、盘带、跑动公里、扑救、失球与红黄牌。程序可导出完整表头；没有对应比赛或同场球员重复时拒绝导入。不是 FM 原生导出格式，需要按模板整理。
 
 ## 默认输入值
 

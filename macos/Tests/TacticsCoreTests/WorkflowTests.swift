@@ -108,7 +108,7 @@ final class WorkflowTests:XCTestCase {
         for i in players.indices {players[i].removeValue(forKey:"background")};object["players"]=players
         let result=try JSONDecoder().decode(Workspace.self,from:JSONSerialization.data(withJSONObject:object)).validated()
         XCTAssertTrue(result.tactic.setup.team.isEmpty);XCTAssertFalse(result.tactic.setup.conditions.custom)
-        XCTAssertEqual(result.schema,"tactics-lab-mac/4")
+        XCTAssertEqual(result.schema,"tactics-lab-mac/5")
     }
 
     private func fixture(_ action:(URL,EngineSearchEnvironment)throws->Void) throws {

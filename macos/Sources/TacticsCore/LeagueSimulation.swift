@@ -24,7 +24,7 @@ public struct LeagueRules:Codable,Equatable {
     public var decidingPlaces:[Int]=[1]
     public init() {}
     public var description:String {"\(cycles==2 ? "主客场双循环":"单循环") · 胜 \(winPoints) / 平 \(drawPoints) / 负 \(lossPoints) · \(ranking.rawValue)"}
-    public var limitation:String {"固定阵容战术实验：每场重置开赛状态，不延续伤病、停赛、疲劳、训练与转会。尚不处理分组、附加赛、公平竞赛分和行政扣分；未决同分保留并列，不以队名制造名次。"}
+    public var limitation:String {"固定阵容战术实验：每场重置开赛状态，不累积伤病、停赛或疲劳；不推进训练、成长、衰减、退役和转会。尚不处理分组、附加赛、公平竞赛分和行政扣分；未决同分保留并列，不以队名制造名次。"}
     public func validate(teamCount:Int) throws {
         guard [1,2].contains(cycles),(0...10).contains(winPoints),(0...10).contains(drawPoints),(0...10).contains(lossPoints),winPoints>=drawPoints,drawPoints>=lossPoints,decidingPlaces.allSatisfy({$0>=1 && $0<teamCount}) else {throw LabError("联赛积分或排名分界无效。")}
         if [.english,.spanish].contains(ranking) {guard cycles==2,winPoints==3,drawPoints==1,lossPoints==0 else {throw LabError("官方积分／排名预设使用双循环、胜 3 平 1 负 0；其他设置请选择自定义排序。")}}
@@ -109,6 +109,7 @@ public struct LeagueRun:Codable,Equatable,Identifiable {
     public var results:[LeagueResult]=[]
     public var failure:String? = nil
     public var engineSHA256:String? = nil
+    public var workers:Int? = nil
     public var expected:Int {schedule.count*seasons}
     public init(setup:LeagueSetup,seasons:Int,seed:UInt32)throws {
         self.setup=try setup.validated();self.schedule=setup.fixtures();self.seasons=seasons;self.firstSeed=seed;startedAt=Date()
@@ -131,14 +132,16 @@ public struct LeagueRun:Codable,Equatable,Identifiable {
         guard (1...100).contains(seasons),expected<=20000,results.count<=expected,UInt64(firstSeed)+UInt64(expected-1)<=UInt64(UInt32.max),status != "已完成" || results.count==expected else {throw LabError("保存的联赛进度无效。")}
         if let imported=setup.importedSchedule {guard imported==schedule else {throw LabError("保存赛程与导入赛程不一致。")}}
         var configurations:[UUID:NativeScenario]=[:]
-        for (i,result) in results.enumerated() {
+        _ = try SimulationConcurrency.missing(requested:expected,firstSeed:firstSeed,seeds:results.map{$0.report.seed})
+        for result in results {
+            let i=Int(result.report.seed-firstSeed)
             let fixture=schedule[i%schedule.count]
             guard result.season==i/schedule.count+1,result.fixture==fixture,result.report.seed==firstSeed+UInt32(i) else {throw LabError("联赛报告的轮次、种子或顺序不一致。")}
             if configurations[fixture.id]==nil {configurations[fixture.id]=try setup.scenario(fixture)}
             guard result.report.configuration==configurations[fixture.id] else {throw LabError("联赛报告的球队配置与实验快照不一致。")}
             _ = try OriginalMatchReport.experiment([result.report]).validated()
         }
-        return self
+        var sorted=self;sorted.results.sort{$0.report.seed<$1.report.seed};return sorted
     }
 }
 public struct LeagueStanding:Identifiable,Equatable {

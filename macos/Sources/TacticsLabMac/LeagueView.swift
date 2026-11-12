@@ -25,6 +25,7 @@ struct LeagueView:View {
                 Spacer()
                 Text("种子").font(.system(size:11));TextField("1",text:$store.leagueSeed).frame(width:75).disabled(store.leagueRunning)
                 Text("重复赛季").font(.system(size:11));TextField("1",value:$store.leagueSeasons,format:.number.grouping(.never)).frame(width:60).disabled(store.leagueRunning)
+                ConcurrencyControl()
                 if store.leagueRunning {Button("停止并保留结果"){store.stopLeague()}}
                 else {
                     if let run=store.leagueRun,run.results.count<run.expected {Button("继续上次（原配置）"){store.runLeague(resume:true);store.leagueSection="积分与统计"}.disabled(store.runningOriginal)}
@@ -166,6 +167,14 @@ struct LeagueReportView:View {
             }
             LeagueTeamStatisticsTable(run:run,season:season)
             TacticPerformanceView(run:run,season:season)
+            Card {
+                HStack {Text("球队战术复盘").font(.system(size:17,weight:.semibold));Spacer();Picker("分析球队",selection:Binding(get:{playerTeam ?? run.setup.teams.first!.id},set:{playerTeam=$0})){ForEach(run.setup.teams){Text($0.name).tag($0.id)}}.frame(width:260)}
+                let selected=playerTeam ?? run.setup.teams.first!.id
+                let selectedGames=games.filter{$0.fixture.home==selected || $0.fixture.away==selected}
+                let sides=Dictionary(uniqueKeysWithValues:selectedGames.map{($0.report.seed,$0.fixture.home==selected ? 0:1)})
+                Text("本队始终指所选球队，主客场已统一；对手合计来自本赛季实际对阵的球队。").font(.system(size:11)).foregroundStyle(Theme.muted)
+                TacticalImpactView(reports:selectedGames.map(\.report),focusSides:sides)
+            }
             LeaguePlayerTable(run:run,season:season)
             Card {
                 Text("逐场成绩 · 最近 100 场").font(.system(size:17,weight:.semibold))
@@ -199,10 +208,10 @@ struct LeaguePlayerTable:View {
     var body:some View {
         Card {
             HStack {Text("球员数据榜").font(.system(size:17,weight:.semibold));Spacer();Picker("球队",selection:$team){Text("全部球队").tag(nil as UUID?);ForEach(run.setup.teams){Text($0.name).tag(Optional($0.id))}}.frame(width:240)}
-            Text("累计数据；列出前 50 人。替补名单记录不视为出场，未验证的助攻、评分、分钟数不补零。").font(.system(size:11)).foregroundStyle(Theme.muted)
-            HStack {Text("球员 / 球队").frame(maxWidth:.infinity,alignment:.leading);ForEach(["进球","xG","射门","射正","传球","成功","黄牌","红牌"],id:\.self){Text($0).frame(width:60)}}.font(.system(size:11)).foregroundStyle(Theme.muted)
+            Text("累计数据；列出前 50 人。助攻来自终场进球记录；旧报告缺失项、未验证的评分和分钟数不补零。").font(.system(size:11)).foregroundStyle(Theme.muted)
+            HStack {Text("球员 / 球队").frame(maxWidth:.infinity,alignment:.leading);ForEach(["进球","助攻","xG","射门","射正","传球","成功","黄牌","红牌"],id:\.self){Text($0).frame(width:56)}}.font(.system(size:11)).foregroundStyle(Theme.muted)
             ForEach(LeaguePlayerTotal.aggregate(run:run,season:season).filter{team==nil || $0.teamID==team}.prefix(50)) {p in
-                HStack {VStack(alignment:.leading,spacing:3){Text(p.name);Text(p.teamName).font(.system(size:10)).foregroundStyle(Theme.muted)}.frame(maxWidth:.infinity,alignment:.leading);ForEach(["goals","xg","shots","shots_on_target","passes","completed_passes","yellow_cards","red_cards"],id:\.self){key in Text(p.statistics[key].map{String(format:key=="xg" ? "%.2f":"%.0f",$0)} ?? "—").monospacedDigit().frame(width:60)}}.font(.system(size:12));Divider()
+                HStack {VStack(alignment:.leading,spacing:3){Text(p.name);Text(p.teamName).font(.system(size:10)).foregroundStyle(Theme.muted)}.frame(maxWidth:.infinity,alignment:.leading);ForEach(["goals","assists","xg","shots","shots_on_target","passes","completed_passes","yellow_cards","red_cards"],id:\.self){key in Text(p.statistics[key].map{String(format:key=="xg" ? "%.2f":"%.0f",$0)} ?? "—").monospacedDigit().frame(width:56)}}.font(.system(size:12));Divider()
             }
         }
     }

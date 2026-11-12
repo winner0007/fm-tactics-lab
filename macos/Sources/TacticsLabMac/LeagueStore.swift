@@ -133,22 +133,26 @@ extension LabStore {
             let data=try Data(contentsOf:folder.appendingPathComponent("run.json"));guard data.count<=500_000_000 else{throw LabError("联赛报告过大。")}
             var run=try JSONDecoder().decode(LeagueRun.self,from:data).validated()
             // Matches are committed individually before the aggregate checkpoint.
-            // Recover the contiguous completed tail after an app/system interruption.
-            for i in run.results.count..<run.expected {
+            // Parallel workers may leave holes anywhere in the schedule.
+            let missing=try SimulationConcurrency.missing(requested:run.expected,firstSeed:run.firstSeed,seeds:run.results.map{$0.report.seed})
+            for i in missing {
                 let file=folder.appendingPathComponent("matches").appendingPathComponent(String(format:"%05d",i)).appendingPathComponent("result.json")
-                if !FileManager.default.fileExists(atPath:file.path){break}
-                run.results.append(try JSONDecoder().decode(LeagueResult.self,from:Data(contentsOf:file)))
+                if !FileManager.default.fileExists(atPath:file.path){continue}
+                let result=try JSONDecoder().decode(LeagueResult.self,from:Data(contentsOf:file))
+                guard result.report.seed==run.firstSeed+UInt32(i) else {throw LabError("逐场文件与比赛编号不一致。")}
+                run.results.append(result)
             }
             if run.status=="运行中" {run.status=run.results.count==run.expected ? "已完成":"已中断，可继续"}
-            _ = try run.validated();leagueRun=run
+            leagueRun=try run.validated()
             leagueSection="积分与统计";if navigate{page="联赛实验"}
         }catch{self.error=error.localizedDescription}
     }
     func runLeague(resume:Bool=false) {
         guard engine.adapterSupported else {error=engine.compatibilityMessage;return}
         guard !leagueRunning,!runningOriginal,!checkingNative,engine.filesReady,let path=engine.appPath,let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineRuntimeProbe") else{return}
-        guard let seed=UInt32(leagueSeed) else {error="请输入有效的 32 位随机种子。";return}
+        guard let seed=UInt32(leagueSeed),(1...256).contains(simulationWorkers) else {error="请输入有效的 32 位随机种子，并行通道应为 1–256。";return}
         let setup=leagueSetup,seasons=leagueSeasons,previous=leagueRun,expectedEngine=engine.binarySHA256!
+        let workers=simulationWorkers,queue=MatchQueue();leagueQueue=queue
         error=nil;leagueSection="积分与统计";leagueRunning=true;leagueCancelled=false;leagueProgress="正在校验全部球队与赛程…"
         Task {
             do {
@@ -156,35 +160,37 @@ extension LabStore {
                 if resume,let previous {run=try await Task.detached{try previous.validated()}.value;run.status="运行中";run.failure=nil}
                 else {run=try await Task.detached{try LeagueRun(setup:setup,seasons:seasons,seed:seed)}.value}
                 try run.validateEngine(expectedEngine);run.engineSHA256=expectedEngine
+                run.workers=workers
                 leagueRun=run
                 let folder=storage.appendingPathComponent("league-runs").appendingPathComponent(run.id.uuidString)
                 try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
                 try JSONEncoder().encode(run).write(to:folder.appendingPathComponent("run.json"),options:.atomic)
                 try JSONEncoder().encode(run.id).write(to:storage.appendingPathComponent("latest-league.json"),options:.atomic)
-                for index in run.results.count..<run.expected {
-                    if leagueCancelled {break}
-                    let season=index/run.schedule.count+1,fixture=run.schedule[index%run.schedule.count],scenario=try run.setup.scenario(fixture)
-                    let current=run.firstSeed+UInt32(index),job=OriginalMatchJob();leagueJob=job
-                    leagueProgress="第 \(season) 次赛季 · \(index%run.schedule.count+1) / \(run.schedule.count) 场 · "+scenario.teams[0].name+" vs "+scenario.teams[1].name
-                    do {
+                let indices=try SimulationConcurrency.missing(requested:run.expected,firstSeed:run.firstSeed,seeds:run.results.map{$0.report.seed})
+                do {
+                    try await queue.run(indices:indices,workers:workers,helper:helper,app:URL(fileURLWithPath:path),request:{index in
+                        let fixture=run.schedule[index%run.schedule.count],scenario=try run.setup.scenario(fixture)
+                        self.leagueProgress="\(min(workers,indices.count)) 路并行 · 已完成 \(run.results.count) / \(run.expected) 场"
                         let log=folder.appendingPathComponent("matches").appendingPathComponent(String(format:"%05d",index)).appendingPathComponent("match.jsonl")
-                        let report=try await Task.detached(priority:.userInitiated){try job.run(helper:helper,app:URL(fileURLWithPath:path),seed:current,log:log,scenario:scenario)}.value
+                        return MatchRequest(index:index,seed:run.firstSeed+UInt32(index),log:log,scenario:scenario)
+                    },accept:{input,report in
                         guard report.engineSHA256==expectedEngine else {throw LabError("游戏引擎在实验期间发生变化，已保留完成结果，请新建实验。") }
+                        let season=input.index/run.schedule.count+1,fixture=run.schedule[input.index%run.schedule.count]
                         let result=LeagueResult(season:season,fixture:fixture,report:report)
-                        try JSONEncoder().encode(result).write(to:log.deletingLastPathComponent().appendingPathComponent("result.json"),options:.atomic)
-                        run.results.append(result);leagueRun=run
+                        try JSONEncoder().encode(result).write(to:input.log.deletingLastPathComponent().appendingPathComponent("result.json"),options:.atomic)
+                        run.results.append(result);run.results.sort{$0.report.seed<$1.report.seed};self.leagueRun=run
                         if run.results.count%10==0 {try JSONEncoder().encode(run).write(to:folder.appendingPathComponent("run.json"),options:.atomic)}
-                    } catch {if !leagueCancelled{run.failure=error.localizedDescription};break}
-                }
+                    })
+                } catch {if !leagueCancelled{run.failure=error.localizedDescription}}
                 run.status=run.results.count==run.expected ? "已完成":leagueCancelled ? "已停止":"未完成"
                 leagueRun=run;try JSONEncoder().encode(run).write(to:folder.appendingPathComponent("run.json"),options:.atomic)
                 leagueProgress="\(run.status) · \(run.results.count) / \(run.expected) 场";refreshLeagueArchives()
                 if let failure=run.failure {error=failure}
             } catch {self.error=error.localizedDescription}
-            leagueJob=nil;leagueRunning=false
+            leagueQueue=nil;leagueRunning=false
         }
     }
-    func stopLeague(){leagueCancelled=true;leagueJob?.cancel()}
+    func stopLeague(){leagueCancelled=true;leagueQueue?.cancel()}
     func exportLeagueReport() {
         guard let leagueRun else{return}
         export(Data(LeagueExport.html(leagueRun).utf8),name:"联赛实验报告.html",type:.html)

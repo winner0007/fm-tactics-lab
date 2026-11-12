@@ -19,13 +19,19 @@ import TacticsCore
     @Published var nativeCheck:NativeEngineCheck?
     @Published var originalSeed="1"
     @Published var originalCount=100
+    @Published var simulationWorkers=SimulationConcurrency.recommended {
+        didSet {if (1...256).contains(simulationWorkers),!preview {
+            do {try FileManager.default.createDirectory(at:storage,withIntermediateDirectories:true);try JSONEncoder().encode(simulationWorkers).write(to:storage.appendingPathComponent("simulation-workers.json"),options:.atomic)}
+            catch {self.error="并行设置未能保存："+error.localizedDescription}
+        }}
+    }
     @Published var batch:SimulationBatch?
     @Published var runningOriginal=false
     @Published var originalProgress=""
     @Published var originalMatch:OriginalMatchReport?
     @Published var originalLogFolder:URL?
     @Published var originalReports:[OriginalMatchReport]=[]
-    private var originalJob:OriginalMatchJob?
+    private var originalQueue:MatchQueue?
     private var originalCancelled=false
     @Published var workbenchStep = "阵型与首发"
     @Published var resultSection="总览"
@@ -50,7 +56,7 @@ import TacticsCore
     @Published var presetLibraryWarning:String?
     @Published var processingTactic=false
     @Published var showSaveImporter=false
-    var leagueJob:OriginalMatchJob?
+    var leagueQueue:MatchQueue?
     var leagueCancelled=false
     var saveJob:SaveReaderJob?
     @Published var baselineVariant = ""
@@ -72,6 +78,7 @@ import TacticsCore
         }
         workspace=(try? workspace.validated()) ?? workspace
         if preview { searchEngine(); return }
+        if let data=try? Data(contentsOf:storage.appendingPathComponent("simulation-workers.json")),let count=try? JSONDecoder().decode(Int.self,from:data),(1...256).contains(count) {simulationWorkers=count}
         let file = storage.appendingPathComponent("workspace.json")
         if FileManager.default.fileExists(atPath: file.path) {
             do {
@@ -95,6 +102,7 @@ import TacticsCore
             originalReports=reports;originalMatch=reports.last
             let logs=storage.appendingPathComponent("engine-runs")
             if FileManager.default.fileExists(atPath:logs.path) {originalLogFolder=logs}
+            if let id=batch?.id {let folder=logs.appendingPathComponent(id.uuidString);if FileManager.default.fileExists(atPath:folder.appendingPathComponent("batch.json").path) {originalLogFolder=folder}}
         }
         loadLeagueStorage()
         refreshTeamPresets()
@@ -283,14 +291,16 @@ import TacticsCore
             var meta=try JSONDecoder().decode(SimulationBatch.self,from:read(folder.appendingPathComponent("batch.json")))
             let files=try FileManager.default.contentsOfDirectory(at:folder,includingPropertiesForKeys:nil).filter{$0.lastPathComponent.hasPrefix("match-") && $0.pathExtension=="json"}
             let reports=try files.map{try JSONDecoder().decode(OriginalMatchReport.self,from:read($0))}.sorted{$0.seed<$1.seed}
-            guard !reports.isEmpty,(1...2000).contains(meta.requested),reports.count<=meta.requested,UInt64(meta.firstSeed)+UInt64(reports.count-1)<=UInt64(UInt32.max),reports.enumerated().allSatisfy({$0.element.seed==meta.firstSeed+UInt32($0.offset) && $0.element.configuration==meta.configuration}) else {throw LabError("历史批次的种子、配置或场数不一致。")}
+            guard (1...2000).contains(meta.requested),reports.count<=meta.requested,reports.allSatisfy({$0.configuration==meta.configuration}) else {throw LabError("历史批次的配置或场数不一致。")}
+            _ = try SimulationConcurrency.missing(requested:meta.requested,firstSeed:meta.firstSeed,seeds:reports.map(\.seed))
+            if let hash=meta.engineSHA256 {guard reports.allSatisfy({$0.engineSHA256==hash}) else {throw LabError("历史批次混用了引擎版本。")}}
             if meta.status=="运行中" {meta.status=reports.count==meta.requested ? "已完成":"已中断"}
             meta.completed=reports.count
-            let e=try OriginalMatchReport.experiment(reports)
-            originalReports=reports;originalMatch=reports.last;batch=meta;originalLogFolder=folder;setExperiment(e);resultSection="测试报告";page="实验对比"
+            let e=reports.isEmpty ? nil:try OriginalMatchReport.experiment(reports)
+            originalReports=reports;originalMatch=reports.last;batch=meta;originalLogFolder=folder;if let e {setExperiment(e)}else{experiment=nil};resultSection="测试报告";page="实验对比"
             try JSONEncoder().encode(reports).write(to:storage.appendingPathComponent("original-matches.json"),options:.atomic)
             try JSONEncoder().encode(meta).write(to:storage.appendingPathComponent("latest-batch.json"),options:.atomic)
-            try JSONEncoder().encode(e).write(to:storage.appendingPathComponent("experiment.json"),options:.atomic)
+            if let e {try JSONEncoder().encode(e).write(to:storage.appendingPathComponent("experiment.json"),options:.atomic)}
         } catch {self.error=error.localizedDescription}
     }
     func importPlayerResults() {
@@ -318,47 +328,53 @@ import TacticsCore
             checkingNative=false
         }
     }
-    func runOriginalMatches() {
+    func runOriginalMatches() {startOriginalBatch(resume:false)}
+    func resumeOriginalMatches() {startOriginalBatch(resume:true)}
+    private func startOriginalBatch(resume:Bool) {
         guard engine.adapterSupported else {error=engine.compatibilityMessage;return}
         guard editedLeagueTeam==nil else {error="当前正在编辑联赛球队。请返回联赛运行，或切换到普通对战后测试。";return}
         guard !runningOriginal,!leagueRunning,!checkingNative,let path=engine.appPath,engine.filesReady else {return}
-        guard let seed=UInt32(originalSeed),(1...2000).contains(originalCount),UInt64(seed)+UInt64(originalCount-1)<=UInt64(UInt32.max) else {error="场数应为 1–2000；种子应为 0–4294967295，整个批次不能超出种子范围。";return}
+        guard let seed=resume ? batch?.firstSeed:UInt32(originalSeed),(1...2000).contains(resume ? (batch?.requested ?? 0):originalCount),(1...256).contains(simulationWorkers) else {error="场数应为 1–2000，并行通道应为 1–256，种子应为有效的 32 位整数。";return}
         guard let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineRuntimeProbe") else {error="安装包缺少原版比赛宿主，请重新构建应用。";return}
         let scenario:NativeScenario?
-        do {scenario=useWorkbench ? try NativeScenario(workspace:workspace):nil} catch {self.error=error.localizedDescription;return}
-        let count=originalCount,expectedEngine=engine.binarySHA256
-        let folder=storage.appendingPathComponent("engine-runs").appendingPathComponent(UUID().uuidString)
-        clearOriginalSelection();experiment=nil
+        do {scenario=resume ? batch?.configuration:(useWorkbench ? try NativeScenario(workspace:workspace):nil)} catch {self.error=error.localizedDescription;return}
+        let count=resume ? batch!.requested:originalCount,expectedEngine=engine.binarySHA256
+        let existing=resume ? originalReports:[]
+        let indices:[Int]
+        do {
+            indices=try SimulationConcurrency.missing(requested:count,firstSeed:seed,seeds:existing.map(\.seed))
+            if resume {guard let meta=batch,meta.engineSHA256.map({$0==expectedEngine}) ?? true,existing.allSatisfy({$0.engineSHA256==expectedEngine && $0.configuration==scenario}),let folder=originalLogFolder,FileManager.default.fileExists(atPath:folder.appendingPathComponent("batch.json").path) else {throw LabError("无法使用当前引擎续跑此批次，请打开对应历史批次或新建实验。")}}
+        } catch {self.error=error.localizedDescription;return}
+        let folder=resume ? originalLogFolder!:storage.appendingPathComponent("engine-runs").appendingPathComponent(UUID().uuidString)
+        if !resume {clearOriginalSelection();experiment=nil;batch=SimulationBatch(requested:count,firstSeed:seed,configuration:scenario);batch?.id=UUID(uuidString:folder.lastPathComponent)!}
         originalLogFolder=folder;runningOriginal=true;originalCancelled=false
-        batch=SimulationBatch(requested:count,firstSeed:seed,configuration:scenario)
+        let workers=simulationWorkers,queue=MatchQueue();originalQueue=queue
+        batch?.status="运行中";batch?.failure=nil;batch?.finishedAt=nil;batch?.engineSHA256=expectedEngine;batch?.workers=workers
         originalProgress="正在校验原版引擎与测试输入…"
         Task {
-            var completed:[OriginalMatchReport]=[]
+            var completed=existing
             do {
                 try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
                 try JSONEncoder().encode(batch).write(to:folder.appendingPathComponent("batch.json"),options:.atomic)
             } catch {self.error=error.localizedDescription;runningOriginal=false;return}
-            for i in 0..<count {
-                if originalCancelled {break}
-                let current=seed+UInt32(i),job=OriginalMatchJob();originalJob=job
-                originalProgress="第 \(i+1) / \(count) 场 · 随机种子 \(current) · 已完成 \(completed.count) 场"
-                do {
-                    let report=try await Task.detached(priority:.userInitiated) {
-                        try job.run(helper:helper,app:URL(fileURLWithPath:path),seed:current,log:folder.appendingPathComponent("seed-\(current).jsonl"),scenario:scenario)
-                    }.value
+            do {
+                try await queue.run(indices:indices,workers:workers,helper:helper,app:URL(fileURLWithPath:path),request:{i in
+                    let current=seed+UInt32(i)
+                    self.originalProgress="\(min(workers,indices.count)) 路并行 · 已完成 \(completed.count) / \(count) 场"
+                    return MatchRequest(index:i,seed:current,log:folder.appendingPathComponent("seed-\(current).jsonl"),scenario:scenario)
+                },accept:{input,report in
                     guard report.engineSHA256==expectedEngine else {throw LabError("游戏引擎在检测后发生变化，请重新检查引擎并新建实验。") }
-                    completed.append(report);originalMatch=report;originalReports=completed
-                    batch?.completed=completed.count
                     // One immutable result per match is durable before updating the UI.
-                    try JSONEncoder().encode(report).write(to:folder.appendingPathComponent("match-\(current).json"),options:.atomic)
-                    if completed.count%25==0 || completed.count==count {setExperiment(try OriginalMatchReport.experiment(completed))}
-                } catch {
-                    if !originalCancelled {self.error=error.localizedDescription}
-                    batch?.failure=originalCancelled ? nil:error.localizedDescription
-                    break
-                }
+                    try JSONEncoder().encode(report).write(to:folder.appendingPathComponent("match-\(input.seed).json"),options:.atomic)
+                    completed.append(report);completed.sort{$0.seed<$1.seed};self.originalMatch=report;self.originalReports=completed
+                    self.batch?.completed=completed.count
+                    if completed.count%25==0 || completed.count==count {self.setExperiment(try OriginalMatchReport.experiment(completed))}
+                })
+            } catch {
+                if !originalCancelled {self.error=error.localizedDescription}
+                batch?.failure=originalCancelled ? nil:error.localizedDescription
             }
-            originalJob=nil;runningOriginal=false
+            originalMatch=completed.last;originalQueue=nil;runningOriginal=false
             batch?.status=completed.count==count ? "已完成":originalCancelled ? "已停止":"未完成"
             batch?.finishedAt=Date()
             if let batch {
@@ -372,7 +388,7 @@ import TacticsCore
             message=originalCancelled ? "模拟已停止 · 已完成 \(completed.count) 场已保留" : "原版模拟完成 \(completed.count) / \(count) 场 · 结果与日志已保存"
         }
     }
-    func cancelOriginalMatches() {originalCancelled=true;originalJob?.cancel()}
+    func cancelOriginalMatches() {originalCancelled=true;originalQueue?.cancel()}
     func showOriginalResults() {
         do {setExperiment(try OriginalMatchReport.experiment(originalReports));page="实验对比";resultSection="测试报告"} catch {self.error=error.localizedDescription}
     }

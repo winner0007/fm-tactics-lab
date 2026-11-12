@@ -9,6 +9,7 @@ struct TacticPerformanceView:View {
     @State private var grouping:TacticGrouping = .exact
     @State private var venue:MatchVenue = .all
     @State private var allSeasons=false
+    @State private var metric:TacticalMetric = .goals
     private var teamID:UUID? {selected ?? run.setup.teams.first?.id}
     private var rows:[TacticPerformance] {teamID.map{TacticPerformance.aggregate(run:run,teamID:$0,season:allSeasons ? nil:season,grouping:grouping,venue:venue)} ?? []}
     var body:some View {
@@ -16,7 +17,7 @@ struct TacticPerformanceView:View {
         Card {
             Text("面对不同战术的表现").font(.system(size:17,weight:.semibold))
             filters
-            Text("完整战术按实际开赛的阵型、角色、指令、盯防和定位球分组。己方战术不同会另列；球队名称和球员能力不会决定分组。").font(.system(size:11)).foregroundStyle(Theme.muted)
+            Text("完整战术按本场保存的阵型、角色、指令、盯防、定位球和临场策略分组。己方战术不同会另列；球队名称和球员能力不会决定分组。").font(.system(size:11)).foregroundStyle(Theme.muted)
             if data.isEmpty {Text("这支球队尚无符合筛选条件的完赛记录。").foregroundStyle(Theme.muted)}
             else {
                 Chart(data) {row in
@@ -24,6 +25,20 @@ struct TacticPerformanceView:View {
                 }.chartXScale(domain:0...3).frame(height:CGFloat(max(160,data.count*35)))
                 Text("场均积分统一按胜 3、平 1、负 0 比较。").font(.system(size:10)).foregroundStyle(Theme.muted)
                 resultTable(data)
+                HStack {Text("同组比赛 · 本队 / 对手").font(.system(size:13,weight:.semibold));Spacer();Picker("技术统计",selection:$metric){ForEach(TacticalMetric.allCases){Text($0.title).tag($0)}}.frame(width:220)}
+                Chart(data){row in
+                    ForEach(0...1,id:\.self){side in
+                        if let value=metric.value(row.impact,side:side) {
+                            BarMark(x:.value(metric.title,value),y:.value("战术",row.opponentKey.prefix(6)+" / 己 "+row.ownKey.prefix(6)),height:.ratio(0.7))
+                                .foregroundStyle(by:.value("球队",side==0 ? "本队":"对手")).position(by:.value("球队",side==0 ? "本队":"对手"))
+                                .annotation(position:.trailing){Text(metric.format(value)).font(.system(size:10)).monospacedDigit()}
+                        }
+                    }
+                }.chartForegroundStyleScale(["本队":Theme.green,"对手":Theme.amber])
+                    .chartYAxis {AxisMarks(preset:.aligned,position:.leading){_ in AxisValueLabel(anchor:.trailing)}}
+                    .chartXScale(domain:0...max(1,(data.flatMap{r in (0...1).compactMap{metric.value(r.impact,side:$0)}}.max() ?? 0)*1.25))
+                    .chartXAxisLabel(metric.title).frame(height:CGFloat(max(160,data.count*65)))
+                Text("场均按有数据的完赛记录计算；成功率按总量相除。射门转化率不含对方乌龙球；缺失统计显示 —。完整指标可在导出报告中查看。").font(.system(size:11)).foregroundStyle(Theme.muted)
                 Text("这是已完成比赛的分组结果，不代表战术克制结论。先比较样本数、主客场与对手强度；需要更稳定的比较时，增加重复赛季。CA 为开赛首发平均当前能力，范围 0–200。").font(.system(size:11)).foregroundStyle(Theme.muted)
             }
         }.onChange(of:run.id){_,_ in selected=nil}

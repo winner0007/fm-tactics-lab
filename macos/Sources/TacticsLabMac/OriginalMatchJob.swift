@@ -7,9 +7,12 @@ final class OriginalMatchJob: @unchecked Sendable {
     private let lock=NSLock()
     private var process:Process?
     private var cancelled=false
+    private var finished=false
     var isCancelled:Bool {lock.lock();defer{lock.unlock()};return cancelled}
     func cancel() {
         lock.lock();defer{lock.unlock()}
+        // A naturally exited child still has a report to parse and commit.
+        if finished || (process.map{!$0.isRunning} ?? false) {return}
         cancelled=true
         if let p=process,p.isRunning {p.terminate()}
     }
@@ -38,7 +41,7 @@ final class OriginalMatchJob: @unchecked Sendable {
         let timeout=DispatchWorkItem { [weak self] in self?.cancel() }
         DispatchQueue.global().asyncAfter(deadline:.now()+60,execute:timeout)
         p.waitUntilExit();timeout.cancel()
-        lock.lock();process=nil;let stopped=cancelled;lock.unlock()
+        lock.lock();process=nil;finished=true;let stopped=cancelled;lock.unlock()
         try output.synchronize()
         if stopped {throw LabError("运行已停止；已完成场次与本场日志均已保留。")}
         return try OriginalMatchReport.parse(Data(contentsOf:log),exitCode:p.terminationStatus,expectedSeed:seed,scenario:scenario)

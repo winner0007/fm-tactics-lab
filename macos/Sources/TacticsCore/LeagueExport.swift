@@ -63,10 +63,15 @@ public enum LeagueExport {
             let maxPoints=max(1,standings.map(\.points).max() ?? 1)
             body+="<h3>积分分布</h3><svg viewBox='0 0 900 \(standings.count*32+20)' role='img' aria-label='积分分布'>"
             for (i,row) in standings.enumerated() {let y=i*32+12,width=580*row.points/maxPoints;body+="<text x='0' y='\(y+15)'>"+escape(row.name)+"</text><rect x='220' y='\(y)' width='\(width)' height='22' fill='#267353'/><text x='\(230+width)' y='\(y+15)'>\(row.points)</text>"};body+="</svg>"
-            let keys=["goals","xg","shots","shots_on_target","passes","completed_passes","yellow_cards","red_cards"]
+            let keys=["goals","assists","xg","shots","shots_on_target","passes","completed_passes","yellow_cards","red_cards"]
             body+="<h3>球队场均数据（己方 / 对手）</h3>"+table(["球队","有效场次","xG","射门","射正","传球","成功传球","控球 %","黄牌","红牌"],LeagueTeamTotal.aggregate(run:run,season:season).map{t in [t.name,String(t.games)]+["xg","shots","shots_on_target","passes","completed_passes","possession","yellow_cards","red_cards"].map{k in [t.mean(k),t.mean(k,against:true)].map{$0.map{String(format:"%.2f",$0)} ?? "—"}.joined(separator:" / ")}})
-            body+="<h3>球员累计数据</h3>"+table(["球员","球队","进球","xG","射门","射正","传球","成功传球","黄牌","红牌"],LeaguePlayerTotal.aggregate(run:run,season:season).map{p in [p.name,p.teamName]+keys.map{key in p.statistics[key].map{String(format:key=="xg" ? "%.2f":"%.0f",$0)} ?? "—"}})
+            body+="<h3>球员累计数据</h3>"+table(["球员","球队","进球","助攻","xG","射门","射正","传球","成功传球","黄牌","红牌"],LeaguePlayerTotal.aggregate(run:run,season:season).map{p in [p.name,p.teamName]+keys.map{key in p.statistics[key].map{String(format:key=="xg" ? "%.2f":"%.0f",$0)} ?? "—"}})
             body+="<h3>全部逐场成绩</h3>"+table(["日期／轮次","主队","比分","客队","种子","配置指纹"],results.map{g in [g.fixture.date ?? String(g.fixture.round),g.report.configuration?.teams[0].name ?? "主队","\(g.report.score[0]):\(g.report.score[1])",g.report.configuration?.teams[1].name ?? "客队",String(g.report.seed),g.report.configurationSHA256 ?? "缺失"]})
+            for team in run.setup.teams {
+                let own=results.filter{$0.fixture.home==team.id || $0.fixture.away==team.id};if own.isEmpty {continue}
+                let sides=Dictionary(uniqueKeysWithValues:own.map{($0.report.seed,$0.fixture.home==team.id ? 0:1)})
+                body+="<details><summary>"+escape(team.name)+" · 战术效果与逐场复盘</summary>"+MatchAnalysisExport.html(own.map(\.report),focusSides:sides)+"</details>"
+            }
         }
         if run.completedSeasons.count>1 {
             body+="<h2>重复赛季排名范围</h2>"
@@ -80,6 +85,10 @@ public enum LeagueExport {
             body+=table(["对手有球 / 无球","对手战术指纹","己方战术指纹","对手球队","场次（主 / 客）","胜 / 平 / 负","胜率","场均进 / 失球","场均 xG / 失 xG","己方 / 对手首发 CA","对手 CA 范围"],rows.map {r in
                 [r.opponentShape,r.opponentKey,r.ownKey,r.opponents.sorted().joined(separator:"、"),"\(r.games)（\(r.homeGames) / \(r.awayGames)）","\(r.wins) / \(r.draws) / \(r.losses)",String(format:"%.1f%%",r.winRate*100),String(format:"%.2f / %.2f",Double(r.goalsFor)/Double(r.games),Double(r.goalsAgainst)/Double(r.games)),r.xgGames>0 ? String(format:"%.2f / %.2f",r.xgFor/Double(r.xgGames),r.xgAgainst/Double(r.xgGames)):"—",String(format:"%.1f / %.1f",r.ownAbility,r.opponentAbility),String(format:"%.1f–%.1f",r.opponentAbilityMin,r.opponentAbilityMax)]
             })
+            for row in rows {
+                body+="<details><summary>技术统计 · 对手 \(row.opponentKey.prefix(8)) / 本队 \(row.ownKey.prefix(8)) · \(row.games) 场</summary>"
+                body+=table(["指标","本队","对手"],TacticalMetric.allCases.map{m in [m.title]+(0...1).map{m.format(m.value(row.impact,side:$0))}})+"</details>"
+            }
         }
         body+="<h2>球队阵容、教练与战术快照</h2>"
         for team in run.setup.teams {

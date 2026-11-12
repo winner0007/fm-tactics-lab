@@ -9,7 +9,7 @@ import TacticsCore
             RootView().environmentObject(store)
                 .frame(minWidth: 1180, minHeight: 760)
                 .preferredColorScheme(.light)
-                .onAppear { captureIfRequested(); originalEngineSmokeIfRequested(); sheetCaptureIfRequested(); SaveImportSmoke.start(store) }
+                .onAppear { captureIfRequested(); originalEngineSmokeIfRequested(); sheetCaptureIfRequested(); SaveImportSmoke.start(store);FeatureSmoke.replay(store) }
         }
         .defaultSize(width: 1440, height: 900)
         .commands {
@@ -45,10 +45,28 @@ import TacticsCore
                     try await Task.sleep(nanoseconds:100_000_000)
                 }
                 precondition(store.engine.filesReady)
-                if custom {store.applyAbility(.professional,scope:.team)}
+                if custom {
+                    store.applyAbility(.professional,scope:.team);store.simulationWorkers=4
+                    store.change{w in
+                        w.createStrategy();w.matchStrategy!.enabled=true
+                        var early=StrategyRule();early.fromMinute=20;early.condition = .any
+                        var late=early;late.id=UUID();late.fromMinute=60;late.target=2
+                        w.matchStrategy!.rules=[late,early]
+                    }
+                }
                 let before=store.workspace,count=custom ? 26:5
                 store.page="引擎与接入";store.originalSeed="1";store.originalCount=count;store.useWorkbench=custom
                 store.runOriginalMatches()
+                if custom {
+                    for _ in 0..<600 {if store.originalReports.count>=3 || !store.runningOriginal {break};try await Task.sleep(nanoseconds:100_000_000)}
+                    store.cancelOriginalMatches()
+                    for _ in 0..<200 {if !store.runningOriginal {break};try await Task.sleep(nanoseconds:100_000_000)}
+                    precondition(store.error==nil && store.batch?.status=="已停止" && !store.originalReports.isEmpty && store.originalReports.count<count)
+                    let saved=store.originalReports
+                    store.simulationWorkers=2;store.resumeOriginalMatches()
+                    for _ in 0..<2400 {if !store.runningOriginal {break};try await Task.sleep(nanoseconds:100_000_000)}
+                    precondition(saved.allSatisfy{r in store.originalReports.contains(r)})
+                }
                 for _ in 0..<2400 {
                     if !store.runningOriginal {break}
                     try await Task.sleep(nanoseconds:100_000_000)
@@ -60,6 +78,11 @@ import TacticsCore
                 let restored=LabStore()
                 precondition(restored.originalMatch==store.originalMatch)
                 precondition(restored.experiment==store.experiment)
+                if custom {
+                    precondition(restored.simulationWorkers==2 && store.originalReports.allSatisfy{$0.strategyEvents?.count==2 && $0.goals != nil})
+                    try await FeatureSmoke.capture(store,folder:folder)
+                    store.simulationWorkers=4
+                }
                 if custom {
                     // Recover a batch whose aggregate metadata was not updated.
                     let batchFolder=store.nativeBatchArchives.first!,batchURL=batchFolder.appendingPathComponent("batch.json"),oldBatch=try Data(contentsOf:batchURL)
@@ -129,7 +152,7 @@ import TacticsCore
                     let reopened=LabStore();precondition(reopened.leagueRun==store.leagueRun)
                     // Simulate a crash after durable match files but before the
                     // aggregate checkpoint; reopening must recover exactly once.
-                    var checkpoint=store.leagueRun!;checkpoint.results.removeLast(3);checkpoint.status="运行中"
+                    var checkpoint=store.leagueRun!;for i in [8,5,1]{checkpoint.results.remove(at:i)};checkpoint.status="运行中"
                     let checkpointURL=store.storage.appendingPathComponent("league-runs").appendingPathComponent(checkpoint.id.uuidString).appendingPathComponent("run.json")
                     try JSONEncoder().encode(checkpoint).write(to:checkpointURL,options:.atomic)
                     let recovered=LabStore();precondition(recovered.leagueRun==store.leagueRun)
@@ -347,7 +370,7 @@ struct RootView: View {
                     HStack { Circle().fill(Color.orange.opacity(0.8)).frame(width:6,height:6); Text("本地编辑与分析").font(.system(size:12,weight:.medium)) }
                     Text(store.runningOriginal || store.leagueRunning ? "原版比赛计算中" : "原版引擎 · 自定义测试").font(.system(size:11)).foregroundStyle(.white.opacity(0.55))
                     Divider().overlay(.white.opacity(0.1)).padding(.vertical,7)
-                    Text("v0.6.1 · 原生 macOS").font(.system(size:10)).foregroundStyle(.white.opacity(0.4))
+                    Text("v0.7.0 · 原生 macOS").font(.system(size:10)).foregroundStyle(.white.opacity(0.4))
                 }.padding(22)
             }.frame(width:202).foregroundStyle(.white).background(Theme.ink)
             VStack(spacing:0) {

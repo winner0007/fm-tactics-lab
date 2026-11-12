@@ -118,9 +118,10 @@ public struct Tactic: Codable, Equatable {
 }
 
 public struct Workspace: Codable, Equatable {
-    public var schema = "tactics-lab-mac/4"
+    public var schema = "tactics-lab-mac/5"
     public var opponent:OpponentPlan? = nil
     public var teamManagement:TeamManagement? = nil
+    public var matchStrategy:MatchStrategy? = nil
     public var players: [Player]
     public var tactic: Tactic
     public var baseline: Tactic?
@@ -145,11 +146,12 @@ public struct Workspace: Codable, Equatable {
     }
 
     public func validated(includeOpponent:Bool=true) throws -> Workspace {
+        try matchStrategy?.validate()
         if let coach=management.coach {
             guard !coach.name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty,coach.name.count<=80,!coach.id.isEmpty,
                   coach.styleID == nil || (0...9).contains(coach.styleID!) else {throw LabError("主教练姓名或战术偏好无效。")}
         }
-        guard ["tactics-lab-mac/1","tactics-lab-mac/2","tactics-lab-mac/3","tactics-lab-mac/4"].contains(schema) else { throw LabError("这是其他格式的方案。当前只支持 Mac 版方案 JSON。") }
+        guard ["tactics-lab-mac/1","tactics-lab-mac/2","tactics-lab-mac/3","tactics-lab-mac/4","tactics-lab-mac/5"].contains(schema) else { throw LabError("这是其他格式的方案。当前只支持 Mac 版方案 JSON。") }
         guard (11...100).contains(players.count), Set(players.map(\.id)).count == players.count else { throw LabError("名单需要 11–100 名球员，且标识不能重复。") }
         if let baselinePlayers {
             guard baseline != nil, baselinePlayers.count == players.count,
@@ -165,7 +167,7 @@ public struct Workspace: Codable, Equatable {
                 guard background.traits.allSatisfy({ PlayerBackground.traitNames.contains($0.key) && (1...20).contains($0.value) }) else { throw LabError("性格属性需为 1–20，未知值应留空。") }
             }
         }
-        for plan in [tactic, baseline].compactMap({ $0 }) {
+        for plan in strategyPlans + [baseline].compactMap({ $0 }) {
             try plan.setup.validate(playerIDs:Set(players.map(\.id)))
             guard !plan.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   plan.slots.count == 11, plan.slots.map(\.id) == Array(0..<11),
@@ -175,7 +177,7 @@ public struct Workspace: Codable, Equatable {
                   plan.slots.allSatisfy({ s in [s.possession,s.defending].allSatisfy({ $0.x.isFinite && $0.y.isFinite && (0.05...0.95).contains($0.x) && (0.05...0.95).contains($0.y) }) }) else { throw LabError("战术配置无效：检查首发、站位和指令范围。") }
         }
         if let opponent { _ = try opponent.workspace.validated(includeOpponent:false) }
-        var upgraded=self;upgraded.schema="tactics-lab-mac/4";upgraded.tactic.normalizePositions()
+        var upgraded=self;upgraded.schema="tactics-lab-mac/5";upgraded.tactic.normalizePositions()
         if includeOpponent && upgraded.opponent==nil {upgraded.opponent=OpponentPlan.example()}
         return upgraded
     }

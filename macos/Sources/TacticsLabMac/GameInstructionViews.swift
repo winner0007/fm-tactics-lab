@@ -115,6 +115,7 @@ struct SimulationBar:View {
             TextField("1",text:$store.originalSeed).frame(width:78).disabled(store.runningOriginal)
             Text("场数").font(.system(size:11)).foregroundStyle(Theme.muted)
             TextField("100",value:$store.originalCount,format:.number.grouping(.never)).frame(width:70).disabled(store.runningOriginal).help("可自定义 1–2000 场；场数越多，越能观察随机波动。")
+            ConcurrencyControl()
             if store.runningOriginal {Button("停止"){store.cancelOriginalMatches()}}
             else {Button("运行比赛"){store.useWorkbench=true;store.runOriginalMatches()}.buttonStyle(.borderedProminent).disabled(!store.engine.adapterSupported || store.leagueRunning)}
         }.textFieldStyle(.roundedBorder).padding(.horizontal,22).padding(.vertical,13).background(.white).overlay(alignment:.top){Divider()}

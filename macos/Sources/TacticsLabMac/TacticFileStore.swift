@@ -7,6 +7,9 @@ extension LabStore {
         var value=editing
         if editedLeagueTeam != nil {value.opponent=OpponentPlan.example()}
         else if editingSide==1 {value.opponent=OpponentPlan(workspace)}
+        // A game FMF exchanges the visible plan, not the experiment's kickoff
+        // plan or automatic switching rules.
+        value.matchStrategy?.enabled=false;value.opponent?.matchStrategy?.enabled=false
         return value
     }
     private func tacticFileTools()throws->(URL,URL) {
@@ -32,7 +35,11 @@ extension LabStore {
                     guard leagueEditingTeam==team,editingSide==side,editing.tactic==before.tactic,editing.players==before.players,team != nil || workspace==ordinary else {throw LabError("读取期间当前球队或对手已改变，请重新导入。")}
                     if team != nil,value.tactic.setup.nativePlayers?.values.contains(where:{$0.values.contains(34)})==true {throw LabError("这套战术指定了某名对手球员。请先导入普通对战，改为按位置盯防，再用于联赛。")}
                     try editing.checkReplacement(value)
-                    change{$0.tactic=value.tactic;$0.management.tacticSource="FMF 导入 · "+source.lastPathComponent};page="战术工作台";workbenchStep="阵型与首发"
+                    change{w in
+                        let teamName=w.tactic.name;w.tactic=value.tactic
+                        if let slot=w.matchStrategy?.editingSlot {w.matchStrategy!.planNames[slot]=value.tactic.name;w.tactic.name=teamName}
+                        w.management.tacticSource="FMF 导入 · "+source.lastPathComponent
+                    };page="战术工作台";workbenchStep="阵型与首发"
                     message="已导入 FMF：\(value.tactic.name) · 球员与定位球已保留 · ⌘Z 撤销"
                 } catch {self.error=error.localizedDescription}
             }
@@ -41,7 +48,8 @@ extension LabStore {
     func exportGameTactic() {
         do {
             let (helper,app)=try tacticFileTools(),scenario=try NativeScenario(workspace:tacticFileWorkspace)
-            let title=String(editing.tactic.name.filter{!"/\\:*?\"<>|".contains($0) && !$0.isNewline}.prefix(80))
+            let planName=editing.matchStrategy.map{$0.planNames[$0.editingSlot]} ?? editing.tactic.name
+            let title=String(planName.filter{!"/\\:*?\"<>|".contains($0) && !$0.isNewline}.prefix(80))
             guard !title.trimmingCharacters(in:.whitespaces).isEmpty else {throw LabError("请先填写战术名称。")}
             let panel=NSSavePanel();panel.allowedContentTypes=[UTType(filenameExtension:"fmf") ?? .data];panel.nameFieldStringValue=title+".fmf"
             panel.message="导出游戏可读取的双阶段阵型、角色、心态与指令。球员属性和定位球另存阵容方案；不会写入此战术文件。"

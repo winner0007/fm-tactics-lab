@@ -11,13 +11,15 @@ struct WorkbenchView: View {
                 Button("按位置选首发") {store.autoLineup()}
                 Button("球员属性 ↗") {store.page="球员与阵容"}
             }.padding(.horizontal,22).padding(.top,14)
+            StrategyPlanTabs()
             Picker("配置步骤",selection:$store.workbenchStep) {
-                ForEach(["阵型与首发","球队指令","球员指令","定位球","状态与磨合"],id:\.self) {Text($0).tag($0)}
+                ForEach(["阵型与首发","球队指令","球员指令","定位球","状态与磨合","临场策略"],id:\.self) {Text($0).tag($0)}
             }.pickerStyle(.segmented).padding(.horizontal,22).padding(.vertical,12)
             if store.workbenchStep == "阵型与首发" {formationBody}
             else if store.workbenchStep == "球队指令" {TeamInstructionsView()}
             else if store.workbenchStep == "球员指令" {PlayerInstructionsView()}
             else if store.workbenchStep == "定位球" {SetPiecesView()}
+            else if store.workbenchStep == "临场策略" {MatchStrategyView()}
             else {ConditionsView()}
             if store.editedLeagueTeam == nil {SimulationBar()}
             else {HStack {Text("这支球队会使用当前阵容与战术参加联赛。").font(.system(size:12));Spacer();Button("返回联赛安排比赛"){store.leaveLeagueEditor()}}.padding(18).background(.white)}

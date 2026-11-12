@@ -27,6 +27,7 @@ struct BatchReportView:View {
                 Text(config==nil ? "数据来源：原版引擎的内置测试阵容。":"数据来源：FM 原版引擎；双方首发、属性、角色与指令均通过开赛前回读。").font(.system(size:11)).foregroundStyle(Theme.green)
             }
             if !reports.isEmpty {
+                TacticalImpactView(reports:reports)
                 HStack(alignment:.top,spacing:18) {
                     Card {
                         Text("场均进球与预期进球").font(.system(size:15,weight:.semibold))

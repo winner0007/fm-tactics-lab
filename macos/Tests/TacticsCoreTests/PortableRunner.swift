@@ -22,7 +22,11 @@ func XCTAssertThrowsError<T>(_ expression: @autoclosure () throws -> T, _ messag
         let native=NativeWorkflowTests()
         let files=TacticFileTests()
         let management=ManagementAnalysisTests()
+        let strategy=StrategyTests()
         let tests: [(String,() throws -> Void)] = [
+            ("Three plans share lineup and conditions, persist and respect locks",strategy.testPlanEditingSharesPlayersButKeepsTactics),
+            ("Score rule priority, boundaries and invalid strategies",strategy.testRulesPriorityBoundariesAndValidation),
+            ("Parallel recovery holes, duplicates and seed overflow",strategy.testMissingSeedsAllowHolesButRejectDuplicates),
             ("Team locks and replacement boundaries",management.testLocksProtectReplacementAndAllowPersonnel),
             ("Only exact verified engine profiles accepted",management.testInstalledFilesDoNotAuthorizeNewEngine),
             ("League engine version pinned across resume",management.testLeagueVersionPinSurvivesPersistence),

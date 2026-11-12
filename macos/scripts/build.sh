@@ -5,7 +5,7 @@ bash scripts/build-save-reader.sh
 export CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$PWD/.build/ModuleCache"
 swift build -c release --disable-sandbox --cache-path "$PWD/.build/cache" --scratch-path "$PWD/.build"
-app="$PWD/dist/FM Tactics Lab 0.6.1.app"
+app="$PWD/dist/FM Tactics Lab 0.7.0.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp .build/release/TacticsLabMac "$app/Contents/MacOS/TacticsLabMac"
 clang -arch arm64 -framework Foundation native/EngineLoadProbe.m -o "$app/Contents/MacOS/EngineLoadProbe"
@@ -27,8 +27,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>FM 战术实验室</string>
 <key>CFBundleIconFile</key><string>TacticsLab</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.6.1</string>
-<key>CFBundleVersion</key><string>7</string>
+<key>CFBundleShortVersionString</key><string>0.7.0</string>
+<key>CFBundleVersion</key><string>8</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>

@@ -90,7 +90,7 @@ final class ManagementAnalysisTests:XCTestCase {
             let fixture=LeagueFixture(home:setup.teams[home].id,away:setup.teams[away].id,round:1)
             let config=try setup.scenario(fixture)
             let stats=[OriginalTeamStatistics(side:0,statistics:withXG ? ["xg":1.5]:[:]),OriginalTeamStatistics(side:1,statistics:withXG ? ["xg":0.5]:[:])]
-            var report=OriginalMatchReport(seed:1,engineSHA256:OriginalMatchReport.engineHash,completedAt:Date(),elapsedSeconds:1,finalTick:22000,finalClock:22000,score:goals,teams:stats,players:[],timeline:[])
+            var report=OriginalMatchReport(seed:UInt32(run.results.count+1),engineSHA256:OriginalMatchReport.engineHash,completedAt:Date(),elapsedSeconds:1,finalTick:22000,finalClock:22000,score:goals,teams:stats,players:[],timeline:[])
             report.configuration=config;report.configurationSHA256=config.sha256
             run.results.append(LeagueResult(season:season,fixture:fixture,report:report))
         }
@@ -101,6 +101,9 @@ final class ManagementAnalysisTests:XCTestCase {
         XCTAssertEqual(r.goalsFor,4);XCTAssertEqual(r.goalsAgainst,4)
         XCTAssertEqual(r.homeGames,1);XCTAssertEqual(r.awayGames,2);XCTAssertEqual(r.opponents,Set(["B","C"]))
         XCTAssertEqual(r.xgGames,2);XCTAssertEqual(r.xgFor,2);XCTAssertEqual(r.xgAgainst,2)
+        XCTAssertEqual(TacticalMetric.xg.value(r.impact,side:0),1)
+        XCTAssertEqual(TacticalMetric.goals.value(r.impact,side:0),4.0/3)
+        XCTAssertNil(TacticalMetric.crosses.value(r.impact,side:0))
         XCTAssertEqual(TacticPerformance.aggregate(run:run,teamID:own,season:1,venue:.away)[0].games,1)
         setup.teams[1].plan.tactic.configuration!.nativeMentality=7
         try add(0,1,[0,1],2)

@@ -8,12 +8,30 @@ public struct NativeScenario:Codable,Equatable {
     public var sha256:String {SHA256.hash(data:data).map{String(format:"%02x",$0)}.joined()}
     public init(workspace:Workspace) throws {
         let w=try workspace.validated()
-        teams=try [NativeTeamInput(players:w.players,tactic:w.tactic,opponent:w.opponent!.workspace),NativeTeamInput(players:w.opponent!.players,tactic:w.opponent!.tactic,opponent:w)]
+        let other=w.opponent!.workspace
+        var own=try NativeTeamInput(players:w.players,tactic:w.startingTactic,opponent:other)
+        var away=try NativeTeamInput(players:other.players,tactic:other.startingTactic,opponent:w)
+        if w.matchStrategy?.enabled==true {own.strategy=try NativeMatchStrategy(workspace:w,opponent:other)}
+        if other.matchStrategy?.enabled==true {away.strategy=try NativeMatchStrategy(workspace:other,opponent:w)}
+        teams=[own,away]
+        if own.strategy != nil || away.strategy != nil {schemaVersion=2}
         _ = try validated()
     }
     public func validated()throws->Self {
-        guard schemaVersion==1,teams.count==2 else {throw LabError("比赛配置必须包含两支球队。")}
+        guard (1...2).contains(schemaVersion),teams.count==2,(schemaVersion==2)==teams.contains(where:{$0.strategy != nil}) else {throw LabError("比赛配置必须包含两支球队，并声明正确的临场策略格式。")}
         for (side,t) in teams.enumerated() {
+            if let strategy=t.strategy {
+                guard strategy.plans.count==3,(0..<3).contains(strategy.kickoffSlot),(1...30).contains(strategy.cooldownMinutes),strategy.rules.count<=12,
+                      Set(strategy.rules.map(\.id)).count==strategy.rules.count,
+                      strategy.rules.allSatisfy({UUID(uuidString:$0.id) != nil && (0...120).contains($0.fromMinute) && ($0.fromMinute...120).contains($0.throughMinute) && (0..<ScoreCondition.allCases.count).contains($0.condition) && (1...10).contains($0.margin) && (0..<3).contains($0.target)}) else {throw LabError("原版临场策略配置无效。")}
+                for plan in strategy.plans {
+                    var pair=teams.map {team -> NativeTeamInput in var v=team;v.strategy=nil;return v}
+                    pair[side]=t.withTactic(plan)
+                    _ = try NativeScenario(teams:pair).validated()
+                }
+                let kickoff=t.withTactic(strategy.plans[strategy.kickoffSlot])
+                guard t.phases==kickoff.phases,t.mentality==kickoff.mentality,t.instructions==kickoff.instructions,t.extraTeamBits==kickoff.extraTeamBits else {throw LabError("开场战术与策略方案不一致。")}
+            }
             guard !t.name.isEmpty,(1...7).contains(t.mentality),(11...20).contains(t.players.count),Set(t.players.map(\.id)).count==t.players.count,t.phases.count==2,t.phases.allSatisfy({$0.count==11}),Set(t.instructions.map(\.group))==Set(NativeCatalog.teamInstructions.map(\.id)),t.instructions.count==NativeCatalog.teamInstructions.count else {throw LabError("比赛配置的阵容或球队指令不完整。")}
             for p in t.players {
                 guard UUID(uuidString:p.id) != nil,!p.name.isEmpty,p.name.count<=80,p.attributes.count==69,p.attributes.enumerated().allSatisfy({$0.offset<15 ? (0...20).contains($0.element):(1...100).contains($0.element)}),Set(p.profile.keys)==Set((0...22).map(String.init)) else {throw LabError("比赛配置的球员属性无效。")}
@@ -37,6 +55,7 @@ public struct NativeScenario:Codable,Equatable {
         }
         return self
     }
+    private init(teams:[NativeTeamInput]) {self.teams=teams}
 }
 public struct NativeInstructionInput:Codable,Equatable {public let group:Int;public let value:UInt32}
 public struct NativeCellInput:Codable,Equatable {
@@ -62,15 +81,22 @@ public struct NativePlayerInput:Codable,Equatable {
 }
 public struct NativeTeamInput:Codable,Equatable {
     public var extraTeamBits:String? = nil
-    public let name:String
-    public let mentality:Int
-    public let formation:String
-    public let defendingFormation:String
-    public let instructions:[NativeInstructionInput]
+    public var strategy:NativeMatchStrategy? = nil
+    public var name:String
+    public var mentality:Int
+    public var formation:String
+    public var defendingFormation:String
+    public var instructions:[NativeInstructionInput]
     public let players:[NativePlayerInput]
-    public let phases:[[NativeCellInput]]
+    public var phases:[[NativeCellInput]]
     public let setPieces:NativeSetPieceInput
     public let notes:[String]
+    public func withTactic(_ plan:NativeTacticInput)->Self {
+        var copy=self;copy.strategy=nil;copy.name=plan.name;copy.mentality=plan.mentality
+        copy.formation=plan.formation;copy.defendingFormation=plan.defendingFormation
+        copy.instructions=plan.instructions;copy.phases=plan.phases;copy.extraTeamBits=plan.extraTeamBits
+        return copy
+    }
     public init(players roster:[Player],tactic input:Tactic,opponent:Workspace) throws {
         var tactic=input;tactic.normalizePositions()
         let teamName=tactic.name
