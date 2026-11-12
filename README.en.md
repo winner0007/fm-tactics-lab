@@ -4,7 +4,7 @@
 
 Test tactics on a Mac using your installed FM27 engine. Set up both squads, repeat matches and review team/player results, or import clubs from a career save and run a league season.
 
-This is a fork of [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab). The original project provides the Windows editor and simulation workflow; this fork adds a native Mac interface and engine adapter. Current Mac version: **0.5**, based on upstream **v1109.3 / `6cb32bf`**, under the [MIT license](LICENSE).
+This is a fork of [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab). The original project provides the Windows editor and simulation workflow; this fork adds a native Mac interface and engine adapter. Current Mac version: **0.6**, based on upstream **v1109.3 / `6cb32bf`**, under the [MIT license](LICENSE).
 
 ## What works
 
@@ -16,6 +16,8 @@ This is a fork of [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics
 Ordinary matches and leagues keep separate squads. Adding a workbench team to a league makes a copy. Opening that league team's squad or tactics edits the same saved team. Each experiment stores its starting configuration, so later edits do not change old results.
 
 ## Run on Mac
+
+Save import is verified on **27.0.1+2503222** (clubs, registered first-team players and a complete calendar). Its updated Mac match-engine binary is **not yet supported**. Editing and historical reports remain available; simulation and game FMF operations stay disabled until that binary is adapted.
 
 Game tactic FMF files can be imported and exported through the original Mac serializer and parser. Named team presets retain the full squad, attributes, tactics and set pieces. Use “Import from FM save” at the top of the editor to select real teams.
 
@@ -30,7 +32,7 @@ git clone https://github.com/winner0007/fm-tactics-lab.git
 cd fm-tactics-lab
 bash macos/scripts/check.sh
 bash macos/scripts/build.sh
-open 'macos/dist/FM Tactics Lab 0.5.app'
+open 'macos/dist/FM Tactics Lab 0.6.app'
 ```
 
 ## Still to do

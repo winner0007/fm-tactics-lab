@@ -28,7 +28,7 @@ struct LeagueView:View {
                 if store.leagueRunning {Button("停止并保留结果"){store.stopLeague()}}
                 else {
                     if let run=store.leagueRun,run.results.count<run.expected {Button("继续上次（原配置）"){store.runLeague(resume:true);store.leagueSection="积分与统计"}.disabled(store.runningOriginal)}
-                    Button("运行联赛"){store.runLeague();store.leagueSection="积分与统计"}.buttonStyle(.borderedProminent).disabled(!store.engine.filesReady || store.runningOriginal || store.leagueSetup.teams.count<2)
+                    Button("运行联赛"){store.runLeague();store.leagueSection="积分与统计"}.buttonStyle(.borderedProminent).disabled(!store.engine.adapterSupported || store.runningOriginal || store.leagueSetup.teams.count<2)
                 }
             }.padding(18).background(.white).overlay(alignment:.top){Divider()}
         }.onChange(of:store.leagueSetup){_,_ in store.saveLeagueSetup()}
@@ -51,6 +51,7 @@ struct LeagueView:View {
                 if let source=store.leagueSetup.rules.ranking.source {Link("查看排名规则依据",destination:URL(string:source)!).font(.system(size:11))}
                 Text(store.leagueSetup.rules.limitation).font(.system(size:11)).foregroundStyle(Theme.muted)
                 if store.leagueSetup.importedSchedule != nil {HStack{Chip(text:"使用存档完整赛程");Text("按存档对阵与日期顺序重赛整个赛季；不累计存档已有比分。").font(.system(size:11));Spacer();Button("改用新循环赛程"){store.leagueSetup.importedSchedule=nil}}}
+                else {Text("赛程：测试工具按循环赛规则生成。FM 职业生涯的赛程生成器尚未接入。").font(.system(size:11)).foregroundStyle(Theme.muted)}
             }
             Card {
                 HStack {Text("参赛球队 · \(store.leagueSetup.teams.count)").font(.system(size:17,weight:.semibold));Spacer();Button("复制普通对战主队"){store.addLeagueTeam(store.workspace)};Button("复制普通对战对手"){if let opponent=store.workspace.opponent {store.addLeagueTeam(opponent.workspace)}}}
@@ -65,6 +66,11 @@ struct LeagueView:View {
                         Menu("随机本队能力"){ForEach(AbilityTier.allCases){tier in Button(tier.menuTitle){store.randomizeLeagueTeam(team.id,tier:tier)}}}
                         Button("移除"){if store.leagueEditingTeam==team.id {store.leaveLeagueEditor(navigate:false)};store.leagueSetup.teams.removeAll{$0.id==team.id};store.leagueSetup.importedSchedule=nil}
                     }.padding(.vertical,5)
+                    HStack {
+                        Text("主教练："+(team.plan.management.coach?.name ?? "未指定／未读取")+" · "+team.plan.management.tacticSource).font(.system(size:11)).foregroundStyle(Theme.muted)
+                        Spacer()
+                        Toggle("锁定战术",isOn:Binding(get:{store.leagueSetup.teams.first{$0.id==team.id}?.plan.management.tacticLocked ?? false},set:{v in if let i=store.leagueSetup.teams.firstIndex(where:{$0.id==team.id}){store.leagueSetup.teams[i].plan.management.tacticLocked=v;store.saveLeagueSetup()}})).toggleStyle(.checkbox).font(.system(size:11))
+                    }
                     Divider()
                 }
                 Text(store.leagueSetup.source).font(.system(size:10)).foregroundStyle(Theme.muted).textSelection(.enabled)
@@ -90,6 +96,8 @@ struct SaveImportPanel:View {
             else {Text(store.saveProgress).font(.system(size:11)).foregroundStyle(Theme.muted)}
             if let catalog=store.saveCatalog {
                 Text(catalog.sourceName+" · "+catalog.gameDate+" · "+catalog.build).font(.system(size:12,weight:.semibold))
+                if let warning=catalog.calendarWarning {Text(warning).font(.system(size:12)).foregroundStyle(Theme.amber)}
+                else if catalog.leagues.isEmpty {Text("未找到已验证的完整双循环联赛。仍可导入单队，加入自定义联赛。").font(.system(size:12)).foregroundStyle(Theme.muted)}
                 HStack(alignment:.top,spacing:24) {
                     VStack(alignment:.leading,spacing:12) {
                         Text("选择一支球队").font(.system(size:14,weight:.semibold))
@@ -157,6 +165,7 @@ struct LeagueReportView:View {
                 }
             }
             LeagueTeamStatisticsTable(run:run,season:season)
+            TacticPerformanceView(run:run,season:season)
             LeaguePlayerTable(run:run,season:season)
             Card {
                 Text("逐场成绩 · 最近 100 场").font(.system(size:17,weight:.semibold))

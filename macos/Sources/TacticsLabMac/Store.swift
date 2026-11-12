@@ -105,27 +105,43 @@ import TacticsCore
     var canUndo: Bool {if let id=editedLeagueTeam?.id{return !(leagueHistory[id] ?? []).isEmpty};return !history.isEmpty}
     var canRedo: Bool {if let id=editedLeagueTeam?.id{return !(leagueFuture[id] ?? []).isEmpty};return !future.isEmpty}
     var editing:Workspace {editedLeagueTeam?.plan ?? (editingSide==0 ? workspace : (workspace.opponent ?? OpponentPlan.example()).workspace)}
-    func change(_ edit: (inout Workspace) -> Void) {
+    func change(allowLockChanges:Bool=false,_ edit: (inout Workspace) -> Void) {
         if let id=editedLeagueTeam?.id,let i=leagueSetup.teams.firstIndex(where:{$0.id==id}) {
             guard !leagueRunning else{return}
             let before=leagueSetup.teams[i].plan;var value=before;edit(&value);value.opponent=nil
+            do {value=try before.protectingLocks(in:value,allowLockChanges:allowLockChanges)} catch {self.error=error.localizedDescription;return}
             guard value != before else{return}
             leagueHistory[id,default:[]].append(before);if leagueHistory[id]!.count>80 {leagueHistory[id]!.removeFirst()};leagueFuture[id]=[]
             leagueSetup.teams[i].plan=value;save();return
         }
         let before=workspace
         var value=editing;edit(&value)
+        do {value=try editing.protectingLocks(in:value,allowLockChanges:allowLockChanges)} catch {self.error=error.localizedDescription;return}
         if editingSide==0 {workspace=value}else{workspace.opponent=OpponentPlan(value)}
         guard workspace != before else{return}
         history.append(before);if history.count>80 {history.removeFirst()};future.removeAll();save()
     }
     func undo() {
-        if let id=editedLeagueTeam?.id,let i=leagueSetup.teams.firstIndex(where:{$0.id==id}) {guard !leagueRunning,let value=leagueHistory[id]?.popLast() else{return};leagueFuture[id,default:[]].append(leagueSetup.teams[i].plan);leagueSetup.teams[i].plan=value;save();return}
-        if let value = history.popLast() { future.append(workspace); workspace = value; save() }
+        if let id=editedLeagueTeam?.id,let i=leagueSetup.teams.firstIndex(where:{$0.id==id}) {
+            guard !leagueRunning,let value=leagueHistory[id]?.last else{return}
+            do {try leagueSetup.teams[i].plan.checkReplacement(value)}catch{self.error=error.localizedDescription;return}
+            leagueHistory[id]?.removeLast();leagueFuture[id,default:[]].append(leagueSetup.teams[i].plan);leagueSetup.teams[i].plan=value;save();return
+        }
+        if let value=history.last {
+            do {try workspace.checkReplacement(value)}catch{self.error=error.localizedDescription;return}
+            history.removeLast();future.append(workspace);workspace=value;save()
+        }
     }
     func redo() {
-        if let id=editedLeagueTeam?.id,let i=leagueSetup.teams.firstIndex(where:{$0.id==id}) {guard !leagueRunning,let value=leagueFuture[id]?.popLast() else{return};leagueHistory[id,default:[]].append(leagueSetup.teams[i].plan);leagueSetup.teams[i].plan=value;save();return}
-        if let value = future.popLast() { history.append(workspace); workspace = value; save() }
+        if let id=editedLeagueTeam?.id,let i=leagueSetup.teams.firstIndex(where:{$0.id==id}) {
+            guard !leagueRunning,let value=leagueFuture[id]?.last else{return}
+            do {try leagueSetup.teams[i].plan.checkReplacement(value)}catch{self.error=error.localizedDescription;return}
+            leagueFuture[id]?.removeLast();leagueHistory[id,default:[]].append(leagueSetup.teams[i].plan);leagueSetup.teams[i].plan=value;save();return
+        }
+        if let value=future.last {
+            do {try workspace.checkReplacement(value)}catch{self.error=error.localizedDescription;return}
+            future.removeLast();history.append(workspace);workspace=value;save()
+        }
     }
     func save() {
         if let team=editedLeagueTeam {
@@ -303,6 +319,7 @@ import TacticsCore
         }
     }
     func runOriginalMatches() {
+        guard engine.adapterSupported else {error=engine.compatibilityMessage;return}
         guard editedLeagueTeam==nil else {error="当前正在编辑联赛球队。请返回联赛运行，或切换到普通对战后测试。";return}
         guard !runningOriginal,!leagueRunning,!checkingNative,let path=engine.appPath,engine.filesReady else {return}
         guard let seed=UInt32(originalSeed),(1...2000).contains(originalCount),UInt64(seed)+UInt64(originalCount-1)<=UInt64(UInt32.max) else {error="场数应为 1–2000；种子应为 0–4294967295，整个批次不能超出种子范围。";return}
@@ -374,6 +391,7 @@ import TacticsCore
         let preferred=(try? Data(contentsOf:preference)).flatMap { try? JSONDecoder().decode(String.self,from:$0) }.map { URL(fileURLWithPath:$0) }
         Task {
             let report=await Task.detached(priority:.userInitiated) { EngineReport.inspect(app:selected,preferredApp:preferred) }.value
+            if engine.binarySHA256 != report.binarySHA256 {nativeCheck=nil}
             engine=report; engineSearching=false
             if selected != nil,report.installationFound,let path=report.appPath,!preview {
                 do {

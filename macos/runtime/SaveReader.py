@@ -35,6 +35,37 @@ def write(path, value):
     tmp.replace(path)
 
 
+def fixture_calendar(save):
+    """Read the checked calendar without requiring historical score records.
+
+    fmsave 0.9.0 fixtures() also joins old results and requires at least 100
+    accepted results. A newly created career can have a valid full calendar
+    without those records. Experiments restart the season, so only the calendar
+    is needed here. Keep the original club, stadium and calendar checks strict;
+    do not relax the score reader or return unchecked scores as zeroes.
+    """
+    from fmsave import _checks
+    from fmsave._layouts import FixtureCalendarLayout, find_layout
+    from fmsave._save import build_fixtures_with_offsets, SPAN_REGION
+
+    context = save._context
+    save.clubs()
+    layout = find_layout(FixtureCalendarLayout, SPAN_REGION, None, save.info.build).layout
+    with context.section('game_db'):
+        clubs = context.club_index()
+        if context.competition_names:
+            save.competitions()
+        stages = context.stage_index()
+        competitions = context.competition_index()
+        stadiums = save._checked_stadium_index()
+    span = context.span_records()
+    fixtures, stats, _ = build_fixtures_with_offsets(
+        span, stages, competitions, clubs, stadiums, layout)
+    _checks.enforce('fixtures', _checks.evaluate_fixtures(
+        stats, save._gate_bounds(), span.span_bytes), strict=True)
+    return fixtures
+
+
 def leagues(fixtures, today):
     groups=defaultdict(list)
     for f in fixtures:
@@ -48,7 +79,7 @@ def leagues(fixtures, today):
         if any(a==b for a,b in pairs) or len(pairs)!=len(members)*(len(members)-1) or set(pairs.values())!={1}: continue
         dates=[m['date'] for m in matches if m.get('date')]
         if not dates or max(dates)<today: continue
-        result.append({'id':f'{competition}:{stage}:{year}','competitionID':competition,'stageID':stage,'season':year,'clubIDs':sorted(members),'fixtures':[{'id':str(i),'home':m['home_club_uid'],'away':m['away_club_uid'],'date':m.get('date'),'homeGoals':m.get('home_goals') if m.get('played') else None,'awayGoals':m.get('away_goals') if m.get('played') else None} for i,m in enumerate(sorted(matches,key=lambda m:(m['date'],m['home_club_uid'],m['away_club_uid'])))]})
+        result.append({'id':f'{competition}:{stage}:{year}','competitionID':competition,'stageID':stage,'season':year,'clubIDs':sorted(members),'fixtures':[{'id':str(i),'home':m['home_club_uid'],'away':m['away_club_uid'],'date':m.get('date'),'homeGoals':None,'awayGoals':None} for i,m in enumerate(sorted(matches,key=lambda m:(m.get('date') or '',m['home_club_uid'],m['away_club_uid'])))]})
     return sorted(result,key=lambda l:(l['season'],l['competitionID'],l['stageID']))
 
 
@@ -85,7 +116,16 @@ def main():
         else:
             result['clubs']=[{'id':c.uid,'name':c.short_name or c.name} for c in save.clubs()]
             result['managedClubIDs']=[m.club_uid for m in save.managed_clubs()]
-            result['leagues']=leagues([plain(f) for f in save.fixtures()],str(save.info.game_date))
+            from fmsave._checks import ReaderCheckError
+            try:
+                result['leagues']=leagues([plain(f) for f in fixture_calendar(save)],str(save.info.game_date))
+            except ReaderCheckError as error:
+                # Clubs passed their own checks above. An unavailable calendar
+                # must not prevent importing a team, nor become a guessed league.
+                result['leagues']=[]
+                result['calendarWarning']='赛程未通过校验，可继续导入单支球队；加入球队后可使用测试工具的循环赛程。'
+                print(json.dumps({'status':'calendar_unavailable','error':str(error)},ensure_ascii=False),flush=True)
+            result['notes'].append('只读取已校验的对阵和日期，从头重赛；不要求存档已有比赛结果，也不导入旧比分。')
     after=source.stat()
     if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns): raise ValueError('读取期间存档发生变化，未导入。')
     write(args.output,result)

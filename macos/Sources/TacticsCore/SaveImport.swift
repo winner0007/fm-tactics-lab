@@ -14,6 +14,7 @@ public struct SaveCatalog:Codable {
     public let schemaVersion:Int;public let sourceName:String;public let sourceSHA256:String
     public let gameDate:String;public let build:String;public let notes:[String]
     public let clubs:[SaveClub];public let managedClubIDs:[Int];public let leagues:[SavedLeague]
+    public var calendarWarning:String? = nil
     public func validated() throws -> Self {
         let ids=Set(clubs.map(\.id))
         guard schemaVersion==1,sourceSHA256.count==64,sourceSHA256.allSatisfy({$0.isHexDigit}),ids.count==clubs.count,Set(leagues.map(\.id)).count==leagues.count,leagues.allSatisfy({l in
@@ -36,6 +37,7 @@ public struct SavedRoster:Decodable {
         w.players=try sorted.map{try $0.player()}
         guard (11...100).contains(w.players.count),Set(w.players.map(\.id)).count==w.players.count else {throw LabError("\(name) 的一线队名单不完整。")}
         w.tactic.name=name;w.rosterSource=source+" · 存档一线队 · 阵型为工具初始模板，需核对"
+        w.management.tacticSource="工具初始模板 · 未读取存档 AI 战术"
         var used=Set<UUID>()
         for i in w.tactic.slots.indices {
             let position=w.tactic.slots[i].position(.possession).id,index=NativeTeamInput.positionAttribute[position]!

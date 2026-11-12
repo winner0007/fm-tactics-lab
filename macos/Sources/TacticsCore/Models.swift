@@ -120,6 +120,7 @@ public struct Tactic: Codable, Equatable {
 public struct Workspace: Codable, Equatable {
     public var schema = "tactics-lab-mac/4"
     public var opponent:OpponentPlan? = nil
+    public var teamManagement:TeamManagement? = nil
     public var players: [Player]
     public var tactic: Tactic
     public var baseline: Tactic?
@@ -144,6 +145,10 @@ public struct Workspace: Codable, Equatable {
     }
 
     public func validated(includeOpponent:Bool=true) throws -> Workspace {
+        if let coach=management.coach {
+            guard !coach.name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty,coach.name.count<=80,!coach.id.isEmpty,
+                  coach.styleID == nil || (0...9).contains(coach.styleID!) else {throw LabError("主教练姓名或战术偏好无效。")}
+        }
         guard ["tactics-lab-mac/1","tactics-lab-mac/2","tactics-lab-mac/3","tactics-lab-mac/4"].contains(schema) else { throw LabError("这是其他格式的方案。当前只支持 Mac 版方案 JSON。") }
         guard (11...100).contains(players.count), Set(players.map(\.id)).count == players.count else { throw LabError("名单需要 11–100 名球员，且标识不能重复。") }
         if let baselinePlayers {

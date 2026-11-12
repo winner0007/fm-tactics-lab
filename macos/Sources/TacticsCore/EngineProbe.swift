@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 public struct EngineDiagnostic:Codable,Identifiable {
     public let title:String
@@ -31,8 +32,11 @@ public struct EngineReport: Codable {
     public var discoverySource: String = ""
     public var searchedLocations: [String] = []
     public var diagnostics: [EngineDiagnostic] = []
+    public var binarySHA256: String? = nil
     public var installationFound: Bool { appPath != nil && pluginFound && !architectures.isEmpty }
     public var filesReady: Bool { installationFound && !diagnostics.isEmpty && diagnostics.allSatisfy(\.passed) }
+    public var adapterSupported:Bool {filesReady && architectures.contains("arm64") && binarySHA256==OriginalMatchReport.engineHash}
+    public var compatibilityMessage:String {adapterSupported ? "此引擎指纹在已验证范围内，比赛结果仍需通过逐场回读校验。":"当前游戏版本 \(version) 的比赛引擎尚未适配。可继续编辑、读取已支持存档及查看历史报告；模拟和游戏战术 FMF 读写暂不可用。"}
     public static var searching: EngineReport { EngineReport(appPath:nil,version:"正在查找",architectures:[],pluginFound:false,canSimulate:false,reason:"正在检查 Steam 游戏库、应用程序目录与已挂载磁盘。") }
 
     public static func inspect(app: URL? = nil, preferredApp: URL? = nil, environment: EngineSearchEnvironment = .current) -> EngineReport {
@@ -125,7 +129,12 @@ public struct EngineReport: Codable {
         let resources=[("游戏共享资源","Resources/shared"),("国际化资源","Resources/icudt65l.dat"),("Steam 动态库","Frameworks/libsteam_api.dylib"),("EOS 动态库","Frameworks/libEOSSDK-Mac-Shipping.dylib"),("PlayFab 通信框架","Frameworks/PlayFabPartyMac.framework"),("PlayFab 多人框架","Frameworks/PlayFabMultiplayerFramework_macOS.framework")]
         let checks=[EngineDiagnostic(title:"FM27 应用版本",passed:isFM27),EngineDiagnostic(title:"Mach-O 引擎与架构",passed:found && !architectures.isEmpty)] + resources.map { EngineDiagnostic(title:$0.0,passed:FileManager.default.fileExists(atPath:bundle.appendingPathComponent($0.1).path)) }
         if isFM27 && found && !architectures.isEmpty && !checks.allSatisfy(\.passed) { reason="已识别 FM27，但部分配套文件缺失。请检查游戏安装，或指定另一处完整安装。" }
-        return EngineReport(appPath:location.path,version:version,architectures:architectures,pluginFound:found,canSimulate:false,reason:reason,diagnostics:checks)
+        var result=EngineReport(appPath:location.path,version:version,architectures:architectures,pluginFound:found,canSimulate:false,reason:reason,diagnostics:checks)
+        if found,let handle=try? FileHandle(forReadingFrom:plugin) {
+            defer{try? handle.close()}
+            do {var hash=SHA256();while let bytes=try handle.read(upToCount:1_048_576),!bytes.isEmpty {hash.update(data:bytes)};result.binarySHA256=hash.finalize().map{String(format:"%02x",$0)}.joined()}catch{}
+        }
+        return result
     }
 
     public static func machArchitectures(_ data: Data) -> [String] {

@@ -9,7 +9,7 @@ import TacticsCore
             RootView().environmentObject(store)
                 .frame(minWidth: 1180, minHeight: 760)
                 .preferredColorScheme(.light)
-                .onAppear { captureIfRequested(); originalEngineSmokeIfRequested(); sheetCaptureIfRequested() }
+                .onAppear { captureIfRequested(); originalEngineSmokeIfRequested(); sheetCaptureIfRequested(); SaveImportSmoke.start(store) }
         }
         .defaultSize(width: 1440, height: 900)
         .commands {
@@ -96,6 +96,19 @@ import TacticsCore
                     precondition(store.editing.tactic==oldTactic && store.editing.players.map(\.id)==ids && store.leagueSetup.teams[1]==other && store.workspace==ordinary)
                     store.editLeagueTeam(other.id);precondition(!store.canUndo)
                     store.change{$0.tactic.name="另一队战术"};store.undo();precondition(store.editing==other.plan)
+                    store.editLeagueTeam(first.id)
+                    store.change{$0.management.coach=CoachProfile(name:"实验教练")}
+                    store.change(allowLockChanges:true){$0.management.coachLocked=true;$0.management.tacticLocked=true}
+                    let locked=store.editing
+                    store.change{$0.tactic.apply(.fiveFourOne,phase:.possession)}
+                    precondition(store.error != nil && store.editing==locked);store.error=nil
+                    do {try store.loadTeamPreset(preset);preconditionFailure("locked replacement accepted")}catch{}
+                    precondition(store.editing==locked)
+                    store.change{$0.management.coach=CoachProfile(name:"另一位教练")}
+                    precondition(store.error != nil && store.editing==locked);store.error=nil
+                    store.randomizeLeagueTeam(first.id,tier:.professional)
+                    precondition(store.error==nil && store.editing.tactic==locked.tactic && store.editing.management==locked.management)
+                    let lockedReload=LabStore();precondition(lockedReload.editing.management==locked.management)
                     store.leaveLeagueEditor();precondition(store.workspace==ordinary && store.editedLeagueTeam==nil)
                     store.runLeague()
                     for _ in 0..<1200 {if (store.leagueRun?.results.count ?? 0)>=2 {break};try await Task.sleep(nanoseconds:100_000_000)}
@@ -122,6 +135,18 @@ import TacticsCore
                     let recovered=LabStore();precondition(recovered.leagueRun==store.leagueRun)
                     try JSONEncoder().encode(store.leagueRun!).write(to:checkpointURL,options:.atomic)
                     try Data(LeagueExport.html(store.leagueRun!).utf8).write(to:folder.appendingPathComponent("league-report.html"))
+                    let breakdown=TacticPerformance.aggregate(run:store.leagueRun!,teamID:first.id)
+                    precondition(breakdown.reduce(0){$0+$1.games}==12 && breakdown.count>=2)
+                    precondition(store.leagueRun!.setup.teams[0].plan.management.tacticLocked)
+                    let chartWindow=NSWindow(contentRect:NSRect(x:0,y:0,width:1280,height:780),styleMask:[.titled],backing:.buffered,defer:false)
+                    chartWindow.contentView=NSHostingView(rootView:VStack{TacticPerformanceView(run:store.leagueRun!,season:1);Spacer()}.padding().environmentObject(store))
+                    chartWindow.orderFront(nil)
+                    try await Task.sleep(nanoseconds:600_000_000)
+                    let chartView=chartWindow.contentView!,chartRep=chartView.bitmapImageRepForCachingDisplay(in:chartView.bounds)!
+                    chartView.cacheDisplay(in:chartView.bounds,to:chartRep)
+                    try chartRep.representation(using:.png,properties:[:])!.write(to:folder.appendingPathComponent("opponent-tactics.png"))
+                    chartWindow.orderOut(nil)
+
                 }
                 guard let window=NSApplication.shared.windows.first(where:{$0.contentView != nil}),let view=window.contentView else {exit(11)}
                 window.setContentSize(NSSize(width:1440,height:1050))
@@ -322,7 +347,7 @@ struct RootView: View {
                     HStack { Circle().fill(Color.orange.opacity(0.8)).frame(width:6,height:6); Text("本地编辑与分析").font(.system(size:12,weight:.medium)) }
                     Text(store.runningOriginal || store.leagueRunning ? "原版比赛计算中" : "原版引擎 · 自定义测试").font(.system(size:11)).foregroundStyle(.white.opacity(0.55))
                     Divider().overlay(.white.opacity(0.1)).padding(.vertical,7)
-                    Text("v0.5 · 原生 macOS").font(.system(size:10)).foregroundStyle(.white.opacity(0.4))
+                    Text("v0.6 · 原生 macOS").font(.system(size:10)).foregroundStyle(.white.opacity(0.4))
                 }.padding(22)
             }.frame(width:202).foregroundStyle(.white).background(Theme.ink)
             VStack(spacing:0) {

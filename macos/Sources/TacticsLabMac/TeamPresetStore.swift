@@ -49,6 +49,7 @@ extension LabStore {
         guard canLoadTeamPreset else { throw LabError("请等球队导入或联赛运行结束后，再载入阵容方案。") }
         let value = try preset.validated()
         let destination = editingTeamLabel
+        try editing.checkReplacement(value.plan)
         change { w in let opponent = w.opponent; w = value.plan; w.opponent = opponent }
         selectedSlot = 0
         message = "已将「\(value.name)」载入\(destination) · ⌘Z 撤销"

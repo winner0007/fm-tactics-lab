@@ -21,7 +21,12 @@ func XCTAssertThrowsError<T>(_ expression: @autoclosure () throws -> T, _ messag
         let stats=StatisticsWorkflowTests()
         let native=NativeWorkflowTests()
         let files=TacticFileTests()
+        let management=ManagementAnalysisTests()
         let tests: [(String,() throws -> Void)] = [
+            ("Team locks and replacement boundaries",management.testLocksProtectReplacementAndAllowPersonnel),
+            ("New engine binary never inherits old compatibility",management.testInstalledFilesDoNotAuthorizeNewEngine),
+            ("Tactic execution fingerprints",management.testTacticFingerprintUsesExecutionNotNamesOrAbility),
+            ("Opponent tactics breakdown and frozen reports",management.testOpponentBreakdownCountsBothSidesAndKeepsSnapshots),
             ("Full independent named team snapshots",files.testTeamPresetRetainsFullTeamWithoutOpponent),
             ("FMF phase mapping, duty and preserved team data",files.testFMFPhaseMappingAndTeamIsolation),
             ("FMF unknown and conflicting data rejected",files.testFMFRejectsUnrepresentableInputs),

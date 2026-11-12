@@ -107,7 +107,7 @@ struct EngineView: View {
                             if !store.engine.filesReady { Button("指定游戏位置…",action:store.chooseGame).buttonStyle(.borderedProminent) }
                         }
                     }
-                    HStack { Metric(title:"游戏版本",value:store.engine.version); Metric(title:"引擎架构",value:store.engine.architectures.joined(separator:" + ")); Metric(title:"原版比赛",value:store.originalMatch == nil ? "待运行验证" : "已自然完赛") }
+                    HStack { Metric(title:"游戏版本",value:store.engine.version); Metric(title:"引擎架构",value:store.engine.architectures.joined(separator:" + ")); Metric(title:"原版比赛",value:store.engine.adapterSupported ? "版本已适配":"当前版本待适配") }
                     Text(store.engine.appPath ?? "未找到 FM27 应用").font(.system(size:11,design:.monospaced)).textSelection(.enabled).foregroundStyle(Theme.muted)
                     Label(store.engine.reason,systemImage:store.engine.filesReady ? "checkmark.circle" : "info.circle").font(.system(size:12)).foregroundStyle(store.engine.filesReady ? Theme.green : Theme.amber)
                     if !store.engine.discoverySource.isEmpty { Chip(text:store.engine.discoverySource) }
@@ -117,7 +117,8 @@ struct EngineView: View {
                 }
                 OriginalSimulationCard()
                 Card {
-                    HStack {Text("Mac 引擎接入状态").font(.system(size:17,weight:.semibold));Spacer();Chip(text:"工作台输入已接通")}
+                    HStack {Text("Mac 引擎接入状态").font(.system(size:17,weight:.semibold));Spacer();Chip(text:store.engine.adapterSupported ? "已匹配适配版本":"当前版本待适配")}
+                    Text(store.engine.compatibilityMessage).font(.system(size:12)).foregroundStyle(store.engine.adapterSupported ? Theme.green:Theme.amber)
                     Text("独立比赛宿主已支持原版初始化、测试输入、自然完赛及基础统计读取。下方保留单独的动态库加载检查，供运行失败时诊断。").font(.system(size:12)).foregroundStyle(Theme.muted)
                     HStack {
                         Button(store.checkingNative ? "正在验证加载…" : "验证原版引擎加载",action:store.checkNativeEngine).disabled(store.checkingNative || store.runningOriginal || !store.engine.filesReady)
@@ -148,7 +149,7 @@ struct EngineView: View {
                     feature("1. 只读存档导入","复用原项目读取组件，选择球队或完整双循环联赛，保留原始属性与来源。",ready:true)
                     feature("2. 独立引擎进程","已跑通初始化、资源、线程上下文、自然完赛和基础统计。",ready:true)
                     feature("3. 自定义联赛实验","自建或导入球队、选择积分与排名规则、主客场赛程与重复赛季。",ready:true)
-                    feature("4. 尚未接入的范围","原始 .dat 数据库、FMF 战术文件、完整生涯状态演进与自动战术优化搜索。",ready:false)
+                    feature("4. 尚未接入的范围","原始 .dat 数据库、定位球 FMF、原版 AI 战术生成和完整生涯状态演进。",ready:false)
                 }
                 Text("比赛在独立进程执行，使用游戏自身文件；不会修改安装包或存档。仅适配已验证的 Mac arm64 引擎指纹，游戏更新后需要重新适配。存档阵容与工具初始战术会明确区分，未解析数据不冒充真实值。").font(.system(size:12)).foregroundStyle(Theme.muted)
             }.padding(26)

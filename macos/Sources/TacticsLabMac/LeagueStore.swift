@@ -29,6 +29,7 @@ extension LabStore {
             for i in 0..<11 {w.players[i].position=f.positions[i];w.players[i].name=String(format:"球员 %02d",i+1)}
             for _ in 0..<9 {w.addCandidate(using:&rng)}
             w.applyAbility(tier,scope:.team,using:&rng);w.tactic.name="随机球队 \(leagueSetup.teams.count+1)";w.rosterSource="按位置生成 · "+tier.rawValue+" · 隐藏属性和性格独立随机"
+            w.management.tacticSource="工具随机阵型"
             addLeagueTeam(w)
         }
     }
@@ -105,6 +106,7 @@ extension LabStore {
                 if toWorkbench,let first=teams.first {
                     guard destinationTeam==nil || leagueSetup.teams.contains(where:{$0.id==destinationTeam}) else {throw LabError("要替换的联赛球队已移除，请重新选择。")}
                     leagueEditingTeam=destinationTeam;editingSide=destinationSide;persistEditingContext()
+                    var replacement=first.plan;replacement.opponent=editing.opponent;try editing.checkReplacement(replacement)
                     change{w in let other=w.opponent;w=first.plan;w.opponent=other};page="球员与阵容";showSaveImporter=false
                 } else if let league {
                     var setup=LeagueSetup();if let ranking {setup.rules.ranking=ranking};setup.teams=teams;setup.name="存档联赛 #\(league.competitionID) · \(league.season)"
@@ -143,6 +145,7 @@ extension LabStore {
         }catch{self.error=error.localizedDescription}
     }
     func runLeague(resume:Bool=false) {
+        guard engine.adapterSupported else {error=engine.compatibilityMessage;return}
         guard !leagueRunning,!runningOriginal,!checkingNative,engine.filesReady,let path=engine.appPath,let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineRuntimeProbe") else{return}
         guard let seed=UInt32(leagueSeed) else {error="请输入有效的 32 位随机种子。";return}
         let setup=leagueSetup,seasons=leagueSeasons,previous=leagueRun

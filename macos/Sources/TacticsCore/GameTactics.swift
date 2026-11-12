@@ -7,6 +7,7 @@ public struct OpponentPlan:Codable,Equatable {
     public var baseline:Tactic?
     public var baselinePlayers:[Player]?
     public var baselineSource:String?
+    public var teamManagement:TeamManagement? = nil
     public static func example() -> Self {
         var w=Workspace.example(includeOpponent:false)
         for i in w.players.indices {w.players[i].name="对手 "+w.players[i].name}
@@ -15,8 +16,8 @@ public struct OpponentPlan:Codable,Equatable {
         w.tactic.name="对手 4-2-3-1";w.tactic.apply(.fourTwoThreeOne,phase:.possession);w.tactic.apply(.fourFourTwo,phase:.defending)
         return Self(players:w.players,tactic:w.tactic,source:"自定义对手 · 职业档次 8–13")
     }
-    public var workspace:Workspace {Workspace(players:players,tactic:tactic,baseline:baseline,baselinePlayers:baselinePlayers,baselineRosterSource:baselineSource,rosterSource:source)}
-    public init(_ w:Workspace) {players=w.players;tactic=w.tactic;source=w.rosterSource;baseline=w.baseline;baselinePlayers=w.baselinePlayers;baselineSource=w.baselineRosterSource}
+    public var workspace:Workspace {Workspace(teamManagement:teamManagement,players:players,tactic:tactic,baseline:baseline,baselinePlayers:baselinePlayers,baselineRosterSource:baselineSource,rosterSource:source)}
+    public init(_ w:Workspace) {players=w.players;tactic=w.tactic;source=w.rosterSource;baseline=w.baseline;baselinePlayers=w.baselinePlayers;baselineSource=w.baselineRosterSource;teamManagement=w.teamManagement}
     private init(players:[Player],tactic:Tactic,source:String) {self.players=players;self.tactic=tactic;self.source=source}
 }
 

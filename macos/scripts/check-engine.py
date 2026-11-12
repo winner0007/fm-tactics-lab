@@ -9,7 +9,7 @@ import time
 
 p=argparse.ArgumentParser()
 p.add_argument('app',type=Path)
-p.add_argument('--helper',type=Path,default=Path(__file__).resolve().parents[1]/'dist/FM Tactics Lab 0.5.app/Contents/MacOS/EngineRuntimeProbe')
+p.add_argument('--helper',type=Path,default=Path(__file__).resolve().parents[1]/'dist/FM Tactics Lab 0.6.app/Contents/MacOS/EngineRuntimeProbe')
 a=p.parse_args()
 root=Path(__file__).resolve().parents[1]
 out=root/'.build/evidence-v04';out.mkdir(parents=True,exist_ok=True)

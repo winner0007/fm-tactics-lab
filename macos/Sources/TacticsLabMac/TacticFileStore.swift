@@ -10,6 +10,7 @@ extension LabStore {
         return value
     }
     private func tacticFileTools()throws->(URL,URL) {
+        guard engine.adapterSupported else {throw LabError(engine.compatibilityMessage)}
         guard !processingTactic,!readingSave,!leagueRunning,!runningOriginal,
               engine.filesReady,let app=engine.appPath,
               let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineRuntimeProbe") else {throw LabError("请先完成引擎接入，并等待当前导入或模拟结束。")}
@@ -17,6 +18,7 @@ extension LabStore {
     }
     func importGameTactic() {
         do {
+            guard !editing.management.tacticLocked else {throw LabError("战术已锁定，请在“教练与锁定”中解锁后再导入。")}
             let (helper,app)=try tacticFileTools()
             guard let source=choose(types:[UTType(filenameExtension:"fmf") ?? .data],message:"导入 FM27 战术到「\(editingTeamLabel)」。保留球员、属性、定位球与比赛状态；战术可撤销。") else{return}
             let before=tacticFileWorkspace,team=leagueEditingTeam,side=editingSide,ordinary=workspace
@@ -29,7 +31,8 @@ extension LabStore {
                     let value=try receipt.fields.applying(to:before,name:receipt.name ?? source.deletingPathExtension().lastPathComponent,opponent:(before.opponent ?? OpponentPlan.example()).workspace)
                     guard leagueEditingTeam==team,editingSide==side,editing.tactic==before.tactic,editing.players==before.players,team != nil || workspace==ordinary else {throw LabError("读取期间当前球队或对手已改变，请重新导入。")}
                     if team != nil,value.tactic.setup.nativePlayers?.values.contains(where:{$0.values.contains(34)})==true {throw LabError("这套战术指定了某名对手球员。请先导入普通对战，改为按位置盯防，再用于联赛。")}
-                    change{$0.tactic=value.tactic};page="战术工作台";workbenchStep="阵型与首发"
+                    try editing.checkReplacement(value)
+                    change{$0.tactic=value.tactic;$0.management.tacticSource="FMF 导入 · "+source.lastPathComponent};page="战术工作台";workbenchStep="阵型与首发"
                     message="已导入 FMF：\(value.tactic.name) · 球员与定位球已保留 · ⌘Z 撤销"
                 } catch {self.error=error.localizedDescription}
             }

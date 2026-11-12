@@ -4,6 +4,7 @@ import TacticsCore
 /// Both editor pages resolve this selection through LabStore.editing/change.
 struct EditingTeamBar:View {
     @EnvironmentObject var store:LabStore
+    @State private var showManagement=false
     private var league:Bool {store.editedLeagueTeam != nil}
     var body:some View {
         HStack(spacing:14) {
@@ -24,6 +25,8 @@ struct EditingTeamBar:View {
                 Text("修改当前对战球队；复制到联赛后，两份配置各自保存。").font(.system(size:11)).foregroundStyle(Theme.muted)
                 Spacer()
             }
+            Button(store.editing.management.tacticLocked ? "战术已锁定":"教练与锁定"){showManagement=true}
         }.padding(.horizontal,24).padding(.vertical,12).background(league ? Theme.green.opacity(0.08):Color.white).disabled((store.leagueRunning && league) || store.readingSave || store.processingTactic)
+        .sheet(isPresented:$showManagement){TeamManagementView().environmentObject(store)}
     }
 }

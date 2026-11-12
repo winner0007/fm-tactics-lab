@@ -73,9 +73,19 @@ public enum LeagueExport {
             let rows=run.setup.teams.map{t -> [String] in let ranks=run.completedSeasons.compactMap{run.table(season:$0).first{$0.id==t.id}?.rank};return [t.name,String(format:"%.2f",Double(ranks.reduce(0,+))/Double(max(1,ranks.count))),String(ranks.min() ?? 0),String(ranks.max() ?? 0)]}
             body+=table(["球队","平均排名","最好","最差"],rows)
         }
-        body+="<h2>参赛球队阵容与战术快照</h2>"
+        body+="<h2>面对不同战术的表现（全部已完成比赛）</h2><p>按实际开赛的完整战术分组，己方战术不同另列。CA 为首发平均当前能力（0–200）。样本数、主客场和球员强度都会影响结果，不能仅凭胜率断定战术克制。</p>"
+        for team in run.setup.teams {
+            let rows=TacticPerformance.aggregate(run:run,teamID:team.id)
+            body+="<h3>"+escape(team.name)+"</h3>"
+            body+=table(["对手有球 / 无球","对手战术指纹","己方战术指纹","对手球队","场次（主 / 客）","胜 / 平 / 负","胜率","场均进 / 失球","场均 xG / 失 xG","己方 / 对手首发 CA","对手 CA 范围"],rows.map {r in
+                [r.opponentShape,r.opponentKey,r.ownKey,r.opponents.sorted().joined(separator:"、"),"\(r.games)（\(r.homeGames) / \(r.awayGames)）","\(r.wins) / \(r.draws) / \(r.losses)",String(format:"%.1f%%",r.winRate*100),String(format:"%.2f / %.2f",Double(r.goalsFor)/Double(r.games),Double(r.goalsAgainst)/Double(r.games)),r.xgGames>0 ? String(format:"%.2f / %.2f",r.xgFor/Double(r.xgGames),r.xgAgainst/Double(r.xgGames)):"—",String(format:"%.1f / %.1f",r.ownAbility,r.opponentAbility),String(format:"%.1f–%.1f",r.opponentAbilityMin,r.opponentAbilityMax)]
+            })
+        }
+        body+="<h2>球队阵容、教练与战术快照</h2>"
         for team in run.setup.teams {
             body+="<h3>"+escape(team.name)+"</h3><p>"+escape(team.plan.rosterSource)+"</p>"
+            let m=team.plan.management
+            body+="<p>主教练："+escape(m.coach?.name ?? "未指定／未读取")+" · "+(m.coachLocked ? "教练已锁定":"教练未锁定")+" · "+(m.tacticLocked ? "战术已锁定":"战术未锁定")+" · "+escape(m.tacticSource)+"</p>"
             if let config=run.results.lazy.compactMap({g in g.fixture.home==team.id ? g.report.configuration?.teams[0]:g.fixture.away==team.id ? g.report.configuration?.teams[1]:nil}).first {
                 body+="<p>有球 "+escape(config.formation)+" / 无球 "+escape(config.defendingFormation)+"</p>"
                 body+=table(["名单","球员","生成档次","相关属性均值","CA"],config.players.enumerated().map{i,p in [i<11 ? "首发 \(i+1)":"候补",p.name,p.abilityTier,String(format:"%.1f",p.attributeMean),String(p.profile["11"] ?? 0)]})
