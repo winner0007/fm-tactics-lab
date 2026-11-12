@@ -51,7 +51,7 @@ struct BatchReportView:View {
                             Text("引擎：\(reports.first!.engineVersion) · Apple Silicon · 原版自然完赛")
                             Text("随机种子：\(reports.first!.seed)–\(reports.last!.seed) · 主队固定主场")
                             Text("配置 SHA-256："+config.sha256).textSelection(.enabled)
-                            ForEach(config.teams[0].notes,id:\.self){Text($0)}
+                            ForEach(config.teams[0].executionNotes,id:\.self){Text($0)}
                         }.font(.system(size:11)).foregroundStyle(Theme.muted).frame(maxWidth:.infinity,alignment:.leading).padding(.top,8)
                     }.padding(16).background(.white,in:RoundedRectangle(cornerRadius:12))
                 }
@@ -86,6 +86,7 @@ struct LineupSnapshot:View {
             }
             DisclosureGroup("个人指令覆盖") {ForEach(team.playerInstructionLines,id:\.self){Text($0).font(.system(size:11)).frame(maxWidth:.infinity,alignment:.leading)}}
             DisclosureGroup("定位球与队长快照") {ForEach(team.setPieceLines,id:\.self){Text($0).font(.system(size:11)).frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,3)}}
+            Text(team.preparationSource ?? "指定战术 · 工作台配置").font(.caption).foregroundStyle(Theme.muted)
             DisclosureGroup("开赛状态与 CA") {ForEach(team.conditionLines,id:\.self){Text($0).font(.system(size:11)).frame(maxWidth:.infinity,alignment:.leading)}}
             Text("相关均值排除门将外场不适用项及负向／隐藏指标，仅用于查看属性分布，不是 FM 的 CA 或球队实力评分。").font(.system(size:10)).foregroundStyle(Theme.muted)
         }

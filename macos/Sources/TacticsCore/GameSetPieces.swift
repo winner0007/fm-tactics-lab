@@ -79,7 +79,7 @@ public struct GameSetPieces:Codable,Equatable {
 }
 public struct NativeSetPieceInput:Codable,Equatable {
     public let routines:[[GameSetPieceRoutine]]
-    public let priorities:[String:[Int]]
+    public var priorities:[String:[Int]]
     public let throwStyles:[Int]
     public init(_ setup:GameSetPieces,players:[NativePlayerInput]) {
         routines=(0..<10).map{setup.routines[String($0)]!};throwStyles=setup.throwStyles

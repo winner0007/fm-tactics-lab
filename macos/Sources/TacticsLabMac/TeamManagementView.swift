@@ -24,11 +24,12 @@ struct TeamManagementView:View {
                 Picker("偏好",selection:$style) {Text("偏好未确认").tag(-1);ForEach(CoachProfile.styles.indices,id:\.self){Text(CoachProfile.styles[$0]).tag($0)}}.frame(width:175)
                 Button("指定"){let c=CoachProfile(name:String(name.trimmingCharacters(in:.whitespacesAndNewlines).prefix(80)),styleID:style<0 ? nil:style);store.change{$0.management.coach=c};name=""}.disabled(name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
             }.disabled(management.coachLocked)
+            TacticSelectionControl(management:Binding(get:{management},set:{v in store.change{$0.management=v}}))
             Divider()
             Toggle("锁定战术",isOn:Binding(get:{management.tacticLocked},set:{v in store.change(allowLockChanges:true){$0.management.tacticLocked=v}}))
             Text("锁定后保留阵型、角色、球队与个人指令、定位球套路；仍可换首发、主罚人、球员能力和开赛状态。修改或导入其他战术前需先解锁。").font(.callout).foregroundStyle(Theme.muted)
             Text("战术来源："+management.tacticSource).font(.caption).foregroundStyle(Theme.muted)
-            Text("实验开始后使用固定快照，不会因编辑而改变。当前不运行董事会换帅或职业生涯 AI 临场调整；未锁定表示允许你编辑和载入，教练姓名本身不会改变比赛计算。").font(.caption).foregroundStyle(Theme.muted)
+            Text("原版 AI 使用导入的教练参数制定赛前战术；缺少或无法唯一确认时，使用原版测试教练参数并标明来源。手填姓名和风格标签不等于导入教练能力。实验不运行董事会换帅；指定战术的临场切换按你的规则执行。").font(.caption).foregroundStyle(Theme.muted)
         }.padding(24).frame(width:770).disabled(store.leagueRunning && store.editedLeagueTeam != nil)
     }
 }

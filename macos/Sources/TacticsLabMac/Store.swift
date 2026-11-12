@@ -32,6 +32,7 @@ import TacticsCore
     @Published var originalLogFolder:URL?
     @Published var originalReports:[OriginalMatchReport]=[]
     private var originalQueue:MatchQueue?
+    var tacticGenerationJob:TacticGenerationJob?
     private var originalCancelled=false
     @Published var workbenchStep = "阵型与首发"
     @Published var resultSection="总览"
@@ -292,6 +293,7 @@ import TacticsCore
             let files=try FileManager.default.contentsOfDirectory(at:folder,includingPropertiesForKeys:nil).filter{$0.lastPathComponent.hasPrefix("match-") && $0.pathExtension=="json"}
             let reports=try files.map{try JSONDecoder().decode(OriginalMatchReport.self,from:read($0))}.sorted{$0.seed<$1.seed}
             guard (1...2000).contains(meta.requested),reports.count<=meta.requested,reports.allSatisfy({$0.configuration==meta.configuration}) else {throw LabError("历史批次的配置或场数不一致。")}
+            if let prep=meta.preparation {guard try prep.resolved==meta.configuration,prep.receipt.seed==meta.firstSeed,prep.engineSHA256==meta.engineSHA256 else {throw LabError("历史批次的 AI 战术快照不一致。")}}
             _ = try SimulationConcurrency.missing(requested:meta.requested,firstSeed:meta.firstSeed,seeds:reports.map(\.seed))
             if let hash=meta.engineSHA256 {guard reports.allSatisfy({$0.engineSHA256==hash}) else {throw LabError("历史批次混用了引擎版本。")}}
             if meta.status=="运行中" {meta.status=reports.count==meta.requested ? "已完成":"已中断"}
@@ -336,7 +338,7 @@ import TacticsCore
         guard !runningOriginal,!leagueRunning,!checkingNative,let path=engine.appPath,engine.filesReady else {return}
         guard let seed=resume ? batch?.firstSeed:UInt32(originalSeed),(1...2000).contains(resume ? (batch?.requested ?? 0):originalCount),(1...256).contains(simulationWorkers) else {error="场数应为 1–2000，并行通道应为 1–256，种子应为有效的 32 位整数。";return}
         guard let helper=Bundle.main.url(forAuxiliaryExecutable:"EngineRuntimeProbe") else {error="安装包缺少原版比赛宿主，请重新构建应用。";return}
-        let scenario:NativeScenario?
+        var scenario:NativeScenario?
         do {scenario=resume ? batch?.configuration:(useWorkbench ? try NativeScenario(workspace:workspace):nil)} catch {self.error=error.localizedDescription;return}
         let count=resume ? batch!.requested:originalCount,expectedEngine=engine.binarySHA256
         let existing=resume ? originalReports:[]
@@ -356,7 +358,21 @@ import TacticsCore
             do {
                 try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
                 try JSONEncoder().encode(batch).write(to:folder.appendingPathComponent("batch.json"),options:.atomic)
-            } catch {self.error=error.localizedDescription;runningOriginal=false;return}
+                if let requested=scenario,requested.teams.contains(where:{$0.generation != nil}) {
+                    originalProgress="原版 AI 正在制定本批战术…"
+                    let job=TacticGenerationJob();tacticGenerationJob=job
+                    let prep=try await Task.detached{try job.run(helper:helper,app:URL(fileURLWithPath:path),scenario:requested,seed:seed,folder:folder.appendingPathComponent("tactics"))}.value
+                    guard !originalCancelled else {throw LabError("已停止战术准备。")}
+                    scenario=try prep.resolved;batch?.configuration=scenario;batch?.preparation=prep
+                }
+                try JSONEncoder().encode(batch).write(to:folder.appendingPathComponent("batch.json"),options:.atomic)
+            } catch {
+                if !originalCancelled {self.error=error.localizedDescription}
+                batch?.failure=originalCancelled ? nil:error.localizedDescription;batch?.status=originalCancelled ? "已停止":"未完成";batch?.finishedAt=Date()
+                do {try JSONEncoder().encode(batch).write(to:folder.appendingPathComponent("batch.json"),options:.atomic);try JSONEncoder().encode(batch).write(to:storage.appendingPathComponent("latest-batch.json"),options:.atomic)}catch{self.error=error.localizedDescription}
+                tacticGenerationJob=nil;originalQueue=nil;runningOriginal=false;originalProgress="战术准备已停止，输入已保留，可继续";refreshArchives();return
+            }
+            tacticGenerationJob=nil
             do {
                 try await queue.run(indices:indices,workers:workers,helper:helper,app:URL(fileURLWithPath:path),request:{i in
                     let current=seed+UInt32(i)
@@ -388,7 +404,7 @@ import TacticsCore
             message=originalCancelled ? "模拟已停止 · 已完成 \(completed.count) 场已保留" : "原版模拟完成 \(completed.count) / \(count) 场 · 结果与日志已保存"
         }
     }
-    func cancelOriginalMatches() {originalCancelled=true;originalQueue?.cancel()}
+    func cancelOriginalMatches() {originalCancelled=true;tacticGenerationJob?.cancel();originalQueue?.cancel()}
     func showOriginalResults() {
         do {setExperiment(try OriginalMatchReport.experiment(originalReports));page="实验对比";resultSection="测试报告"} catch {self.error=error.localizedDescription}
     }

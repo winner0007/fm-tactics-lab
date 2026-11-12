@@ -13,6 +13,7 @@ struct OriginalSimulationCard:View {
             }
             Text("使用本机 FM 原版引擎。工作台模式会保存并回读双方配置；内置基线用于检查引擎运行。").font(.system(size:12)).foregroundStyle(Theme.muted).fixedSize(horizontal:false,vertical:true)
             Toggle("使用工作台双方配置",isOn:$store.useWorkbench).disabled(store.runningOriginal)
+            if store.useWorkbench {ExperimentTacticsConfiguration();Divider()}
             HStack(spacing:15) {
                 Text("起始种子").font(.system(size:12))
                 TextField("0–4294967295",text:$store.originalSeed).frame(width:130).textFieldStyle(.roundedBorder).disabled(store.runningOriginal)

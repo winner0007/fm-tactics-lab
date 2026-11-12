@@ -17,7 +17,9 @@ struct EditingTeamBar:View {
                     Text("请选择球队").tag(nil as UUID?)
                     ForEach(store.leagueSetup.teams){Text($0.name).tag(Optional($0.id))}
                 }.frame(width:280)
-                Text("战术、球员和定位球共用这支球队，修改自动保存。").font(.system(size:11)).foregroundStyle(Theme.muted)
+                if store.leagueSetup.testTeamID==store.leagueEditingTeam {TestTeamBadge()}
+                else {Button("设为我的测试球队"){store.setLeagueTestTeam(store.leagueEditingTeam)}.font(.system(size:11))}
+                Text("修改自动保存").font(.system(size:11)).foregroundStyle(Theme.muted)
                 Spacer()
                 Button("返回联赛"){store.leaveLeagueEditor()}
             } else {

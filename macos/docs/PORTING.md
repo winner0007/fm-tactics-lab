@@ -2,7 +2,7 @@
 
 ## 当前做到哪里
 
-0.7 在已恢复的 27.0.1.2503222 原版引擎上增加三套战术与临场切换、并行比赛和分组报告。新开档读取、球队锁定和 FMF 读写保留。上游 Windows 代码保留在原目录，Mac 实现在 `macos/`。产品边界见[战术与 AI](TACTICS_AND_AI.md)，签名条件见[打包说明](DISTRIBUTION.md)。
+0.8 在原有临场切换、并行比赛和分组报告上，增加原版 AI 赛前生成、DAT 初始球队导入和本队高亮。新开档读取、球队锁定和 FMF 读写保留。上游 Windows 代码保留在原目录，Mac 实现在 `macos/`。产品边界见[战术与 AI](TACTICS_AND_AI.md)，签名条件见[打包说明](DISTRIBUTION.md)。
 
 当前适配 FM27 `27.0.0.2493426` 和 `27.0.1.2503222` 的指定 arm64 二进制；引擎指纹、字段和 ABI 依据在 [实测记录](MAC_ENGINE_STATUS.md)。游戏更新后要重新验证，不能只改版本字符串。
 
@@ -16,6 +16,9 @@
 | Mac 引擎启动与自然完赛 | `native/EngineProfiles.h`、`EngineRuntimeProbe.mm`、`EngineABI_arm64.S` |
 | 编辑哪支球队、自动保存和撤销 | `Sources/TacticsLabMac/Store.swift`、`LeagueStore.swift`、`EditingTeamBar.swift` |
 | 存档读取 | `runtime/SaveReader.py` → 上游 `src/desktop_save_*`；Swift 侧 `SaveReaderJob.swift`、`SaveImport.swift` |
+| DAT 初始球队与教练 | `runtime/DatabaseReader.py`、`CoachReader.py`；入口复用 `SaveImportPanel` |
+| 战术来源与原版 AI 生成 | `TacticSelection.swift`、`TacticSelectionView.swift`、`TacticGenerationJob.swift`、`native/EngineGeneration.h` |
+| 我的球队与高亮 | `LeagueSetup.testTeamID`、`LeagueRun.reportTeamID`、`TestTeamHighlight.swift`、`LeagueExport.swift` |
 | 方案库与 FMF | `TeamPreset.swift`、`TeamPresetStore.swift`、`FMF.swift`、`TacticFileJob.swift`、`native/EngineTactics.h` |
 | 联赛排程与排名 | `LeagueSimulation.swift`；界面 `LeagueView.swift` |
 | 统计与报告 | `OriginalMatchReport.swift`、`BatchExport.swift`、`LeagueExport.swift` |
@@ -40,6 +43,8 @@
 - `check-engine.py`：用安装包内置阵容检查 9 场原版比赛、同种子复现、边界种子和取消。
 - `check-workbench.sh`：验证 12 阵型及状态、盯人、队长、定位球变化。依次传绝对路径：输出目录、宿主、`fm.app`；可再传存档阵容和目录 JSON 跑完整联赛。
 - `CheckLeagueReport.swift`：复核整赛季配置、身份、种子、排名和汇总，拒绝被改动的报告。
+- `check-tactics.sh <输出目录> <宿主> <fm.app> [阵容导出 JSON]`：原版 AI、同种子生成一致、球员身份、教练回读与自然完赛；可预检导入联赛的所有对阵。先构建 release 模块。
+- 用 SaveReader 构建虚拟环境运行 `check-database.py <2700_fm目录> <私有输出目录>`：验证 20 队导入、未设定值重复导入一致、身份与范围、截断／缺组件／指纹不符拒绝和源文件只读。
 - `check-tactic-files.sh`：12 阵型经原版 FMF 写入／归档读取／战术解析再导入，保留中文名、职责与附加位；畸形归档拒绝。
 - `check-fmf-archives.py`：用 SaveReader 构建虚拟环境运行，核对上游 Windows 封装兼容性与原版压缩归档读取；参数同上，为输出目录、宿主和 `fm.app`。
 - `check-simulation-features.sh <输出目录> <宿主> <fm.app>`：先构建 release 模块；验证单路／4 路结果一致、双边临场切换、取消与补缺、64 场终场进球分类、传中合计、分段统计及导出。
@@ -58,20 +63,20 @@
 
 | 项目 | Mac 当前状态 | 上游参考与移植要点 |
 | --- | --- | --- |
-| 原版 AI 生成 | 尚未接通；当前导入真实球员后使用明确的工具模板 | `desktop_real_generation.py`、`desktop_real_generation_prepare.py`、`native_source_generation.h`：绑定真实教练及阵容，0 tick 准备后读取主／客场完整战术；先验证身份、阵容与原版回读，再接 UI。生成结果是固定预览计划，不是生涯实战还原。 |
+| 原版 AI 生成 | 已接通 2503222 的原版 0 tick 准备，绑定名单和可确认的教练参数，冻结后执行 | `desktop_real_generation.py`、`desktop_real_generation_prepare.py`、`native_source_generation.h`：绑定真实教练及阵容，0 tick 准备后读取主／客场完整战术；先验证身份、阵容与原版回读，再接 UI。生成结果是固定预览计划，不是生涯实战还原。 |
 | 引擎复用与并发 | 已支持 1–256 路独立进程并发，每场重新加载引擎；设置持久化、取消与补缺已实现 | `desktop_warm_batch.py` 的协议 2：宿主能力握手、逐场清理执行力与线程状态、释放比赛对象、逐场超时取消。移植常驻宿主前仍需证明冷／热运行一致与内存稳定，不能把支持 256 路理解为已经在 256 路实测。 |
-| 随机对手战术池 | 尚无独立池；可用多支独立联赛球队测试 | `fm27_tactic_pool.py`：按种子固定抽签、权重、A/B 共用对手抽签。与本版 `TacticPerformance` 分组报告衔接。不要把上游统一属性选项替换成我们的按位置随机。 |
+| 随机对手战术池 | 已有按种子抽取阵型、心态和部分指令；尚无带权重文件池 | `fm27_tactic_pool.py`：按种子固定抽签、权重、A/B 共用对手抽签。与本版 `TacticPerformance` 分组报告衔接。不要把上游统一属性选项替换成我们的按位置随机。 |
 | 正式版与 FMF | 已验证 27.0.0.2493426、27.0.1.2503222 及战术 FMF | 上游版本为 27.0.1+2494687，`desktop_save_compat.py` 增加布局与辅助指令映射修复。Windows 地址和对象布局不能复制到 arm64；旧版本继续保留独立指纹。 |
-| 球队、联赛名称 | 当前显示存档球队名和联赛 ID | `desktop_game_db_names.py` 可借鉴本机 lang_db.dat 名称读取；这不等于已有完整初始数据库导入。 |
+| 球队、联赛名称 | DAT 已读取本地英文名称与联赛归属；存档联赛仍按 ID 识别 | `desktop_game_db_names.py` 可作为多语名称参考；Mac 已独立接入初始名单，完整规则仍需适配。 |
 | 定位球 FMF | 可编辑并执行，单独文件交换未接通 | 对照上游单独的定位球入口；战术 FMF 不含定位球，不能宣称已覆盖。 |
 
-推荐顺序：原版 AI 生成和版本适配 → 对手池及配对实验 → 宿主复用。职业生涯赛程生成、自动聘任和解雇主教练仍未接入，上游这次更新也未提供这些功能。
+推荐顺序：更多 DAT/教练边界验证 → 对手池及配对实验 → 宿主复用。职业生涯赛程生成、自动聘任和解雇主教练仍未接入，上游这次更新也未提供这些功能。
 
-本机只读研究已用 Mac 原版 staff reader 验证新存档的 21 位 AI 教练偏好，但还没有接入正式导入链路。证据留在 `.build/evidence-save-20261112/`；不可将“读到教练”写成“已生成 AI 战术”。
+存档教练读取已接入 `runtime/CoachReader.py`；原版生成在 `native/EngineGeneration.h`、`TacticGenerationJob.swift`，输入解析、身份换位与冻结校验在 `TacticSelection.swift`。教练绑定为 manager + 0x2ff8 的 52 字节参数、+0x30c8 的 8 个阵型码；清除 +0x30d0 的人工控制位后调用原版准备。必须同时设置 team +0x73d/0x73e 的注册人数和球员池人数，避免 11 人名单混入内置载体。生成与正式比赛分进程；正式宿主拒绝未解析的 AI 请求。
 
 ### 其他待办
 
-1. 原始 `.dat` 数据库：为快速选择真实球队与联赛解析初始阵容和赛事规则，不能用初始化 JSON 代替。目前支持新开档立即保存的 `.fm`。定位球套路 FMF 交换也待适配。
+1. DAT 在 `runtime/DatabaseReader.py`：已支持 schema 4000 / 2700 的四组件、俱乐部/球队/联赛、完整人物索引和选队资料。对象 ID 在记录尾部，名单用 ordinal，不能套存档的 header 索引。未设定值使用 dat2700-unrated-v1 策略并记录原值；完整赛事规则、编辑补丁、开档初始化仍待接入。定位球套路 FMF 交换也待适配。
 2. 更多原版统计：助攻与传中已加入；分钟、评分、进攻路线等仍需核实产生和读取位置，缺失项保持缺失。
 3. 原生 A/B 队列：固定双方阵容，用相同种子分别运行两套战术，保留各自结果和配对关系。
 4. 临场换人和跨场状态：改阵已用原版命令实现；自定义换人、疲劳和伤停累积仍需独立验证，不应混入固定条件对照。

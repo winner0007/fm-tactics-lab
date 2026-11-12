@@ -53,6 +53,7 @@ static NSString *hashFile(NSString *path) {
 
 #include "EngineScenario.h"
 #include "EngineTactics.h"
+#include "EngineGeneration.h"
 #include "EngineStatistics.h"
 #include "EngineStrategy.h"
 #include "EngineGoals.h"
@@ -118,6 +119,7 @@ int main(int argc, char **argv) {
     bool importTAC=argc==4&&!strcmp(argv[2],"--import-plan");
     bool importFMF=argc==4&&!strcmp(argv[2],"--import-tactic");
     if (!exportTAC && argc != 2 && argc != 4 && argc != 6) return 64;
+    generatingTactics=argc==6&&!strcmp(argv[4],"--generate-tactics");
     bool overrideSeed=argc>=4&&!exportTAC&&!importTAC&&!importFMF;
     uint32_t requestedSeed=0;
     if(overrideSeed) {
@@ -133,12 +135,13 @@ int main(int argc, char **argv) {
     double started=NSProcessInfo.processInfo.systemUptime;
     @autoreleasepool {
         if(argc==6||exportTAC) {
-          if(!exportTAC&&strcmp(argv[4],"--scenario"))return 64;
+          if(!exportTAC&&!generatingTactics&&strcmp(argv[4],"--scenario"))return 64;
           NSString *scenarioPath=@(argv[exportTAC?3:5]);
           NSData *bytes=[NSData dataWithContentsOfFile:scenarioPath];
           if(!bytes||bytes.length>1000000)fail("invalid_scenario_file",83);
           scenario=[NSJSONSerialization JSONObjectWithData:bytes options:0 error:nil];
           scenarioHash=hashFile(scenarioPath);validateScenario();
+          if(!generatingTactics)for(NSDictionary *team in scenario[@"teams"])if(team[@"generation"])fail("ai_preparation_required",87);
         }
         NSString *app=@(argv[1]);
         NSString *plugin=[app stringByAppendingPathComponent:@"Contents/PlugIns/game_plugin.bundle/Contents/MacOS/game_plugin"];
@@ -258,10 +261,12 @@ int main(int argc, char **argv) {
         if(exportTAC) {if(strcmp(argv[5],"0")&&strcmp(argv[5],"1"))return 64;exportTactic(match,@(argv[4]),unsigned(atoi(argv[5])),@(argv[6]));}
         if(importTAC) importTacticPlan(match,[NSData dataWithContentsOfFile:@(argv[3])],@"导入战术");
         if(importFMF) {NSString *title=nil;NSData *plan=readTacticArchive(resources,@(argv[3]),&title);importTacticPlan(match,plan,title);}
+        prepareGeneration(match);
         begin("prepare_original_match");
         call<void>(0x4a5618c,match);
         event(@"native_preparation_returned",@{@"gates":@[@(match[0x15560]),@(match[0x1555e]),@(match[0x15565])],@"tick":@(*(int*)(match+0x154dc))});
         if(match[0x15560]!=1||match[0x1555e]!=1||!match[0x15565]) fail("match_preparation_incomplete",76);
+        finishGeneration(match);
         verifyScenario(match);
         begin("run_original_match");
         // 0x4a56c10 confirms the native result accessor: context +0x18,

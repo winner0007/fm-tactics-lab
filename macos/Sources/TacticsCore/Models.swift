@@ -148,6 +148,9 @@ public struct Workspace: Codable, Equatable {
     public func validated(includeOpponent:Bool=true) throws -> Workspace {
         try matchStrategy?.validate()
         if let coach=management.coach {
+            if let parameters=coach.parameters {
+                guard parameters.count==52,parameters.allSatisfy({(0...100).contains($0)}),let codes=coach.formationCodes,codes.count==8,codes.allSatisfy({(0...64).contains($0)}) else {throw LabError("教练参数或阵型偏好不完整。")}
+            } else if coach.formationCodes != nil {throw LabError("缺少与阵型偏好对应的教练参数。")}
             guard !coach.name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty,coach.name.count<=80,!coach.id.isEmpty,
                   coach.styleID == nil || (0...9).contains(coach.styleID!) else {throw LabError("主教练姓名或战术偏好无效。")}
         }

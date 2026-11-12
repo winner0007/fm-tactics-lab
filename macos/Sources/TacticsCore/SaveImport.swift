@@ -9,17 +9,19 @@ public struct SavedFixture:Codable,Identifiable {
 public struct SavedLeague:Codable,Identifiable {
     public let id:String;public let competitionID:Int;public let stageID:Int;public let season:Int
     public let clubIDs:[Int];public let fixtures:[SavedFixture]
+    public var name:String? = nil
 }
 public struct SaveCatalog:Codable {
     public let schemaVersion:Int;public let sourceName:String;public let sourceSHA256:String
     public let gameDate:String;public let build:String;public let notes:[String]
     public let clubs:[SaveClub];public let managedClubIDs:[Int];public let leagues:[SavedLeague]
+    public var sourceKind:String? = nil
     public var calendarWarning:String? = nil
     public func validated() throws -> Self {
         let ids=Set(clubs.map(\.id))
         guard schemaVersion==1,sourceSHA256.count==64,sourceSHA256.allSatisfy({$0.isHexDigit}),ids.count==clubs.count,Set(leagues.map(\.id)).count==leagues.count,leagues.allSatisfy({l in
             let members=Set(l.clubIDs)
-            return (4...40).contains(members.count) && members.count==l.clubIDs.count && members.isSubset(of:ids) && l.fixtures.count==members.count*(members.count-1) && Set(l.fixtures.map{"\($0.home):\($0.away)"}).count==l.fixtures.count && l.fixtures.allSatisfy{$0.home != $0.away && members.contains($0.home) && members.contains($0.away)}
+            return (4...40).contains(members.count) && members.count==l.clubIDs.count && members.isSubset(of:ids) && ((sourceKind=="database" && l.fixtures.isEmpty) || (l.fixtures.count==members.count*(members.count-1) && Set(l.fixtures.map{"\($0.home):\($0.away)"}).count==l.fixtures.count && l.fixtures.allSatisfy{$0.home != $0.away && members.contains($0.home) && members.contains($0.away)}))
         }) else {throw LabError("存档目录不完整。")}
         return self
     }
@@ -31,12 +33,15 @@ public struct SavedRosterExport:Decodable {
 }
 public struct SavedRoster:Decodable {
     public let clubID:Int;public let name:String;public let players:[SavedPlayer]
+    public var coach:CoachProfile? = nil
     public func workspace(source:String) throws -> Workspace {
         var w=Workspace.example(includeOpponent:false)
         let sorted=players.sorted{($0.ability.current ?? 0)>($1.ability.current ?? 0)}
         w.players=try sorted.map{try $0.player()}
         guard (11...100).contains(w.players.count),Set(w.players.map(\.id)).count==w.players.count else {throw LabError("\(name) 的一线队名单不完整。")}
-        w.tactic.name=name;w.rosterSource=source+" · 存档一线队 · 阵型为工具初始模板，需核对"
+        w.management.coach=coach
+        let initialized=players.filter{($0.initializedFields ?? 0)>0}.count
+        w.tactic.name=name;w.rosterSource=source+" · 导入球员池 · 阵型为工具初始模板，需核对"+(initialized>0 ? " · \(initialized) 人含 DAT 未设定值，按固定规则补全":"")
         w.management.tacticSource="工具初始模板 · 未读取存档 AI 战术"
         var used=Set<UUID>()
         for i in w.tactic.slots.indices {
@@ -59,7 +64,8 @@ public struct SavedPlayer:Decodable {
     public let heightCM:Int;public let age:Int?
     public let ability:SavedAbility;public let personality:[String:Int]?
     public let traitBits:UInt64?;public let reputation:[String:Int]
-    enum CodingKeys:String,CodingKey {case uid,uniqueID="unique_id",name,positions,rawAttributes="raw_attributes",rawLeftFoot="raw_left_foot",rawRightFoot="raw_right_foot",heightCM="height_cm",age,ability,personality,traitBits="trait_bits",reputation}
+    public let initializedFields:Int?
+    enum CodingKeys:String,CodingKey {case uid,uniqueID="unique_id",name,positions,rawAttributes="raw_attributes",rawLeftFoot="raw_left_foot",rawRightFoot="raw_right_foot",heightCM="height_cm",age,ability,personality,traitBits="trait_bits",reputation,initializedFields}
     public func player() throws -> Player {
         let labels=["GK","SW","DL","DC","DR","DM","ML","MC","MR","AML","AMC","AMR","ST","WBL","WBR"]
         let keys=["gk","sw","dl","dc","dr","dm","ml","mc","mr","aml","amc","amr","stc","wbl","wbr"]

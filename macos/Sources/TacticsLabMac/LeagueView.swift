@@ -55,19 +55,34 @@ struct LeagueView:View {
                 else {Text("赛程：测试工具按循环赛规则生成。FM 职业生涯的赛程生成器尚未接入。").font(.system(size:11)).foregroundStyle(Theme.muted)}
             }
             Card {
-                HStack {Text("参赛球队 · \(store.leagueSetup.teams.count)").font(.system(size:17,weight:.semibold));Spacer();Button("复制普通对战主队"){store.addLeagueTeam(store.workspace)};Button("复制普通对战对手"){if let opponent=store.workspace.opponent {store.addLeagueTeam(opponent.workspace)}}}
+                HStack {Text("参赛球队 · \(store.leagueSetup.teams.count)").font(.system(size:17,weight:.semibold));Spacer();Button("复制普通对战主队"){store.addLeagueTeam(store.workspace,markAsTestTeam:store.leagueSetup.testTeamID==nil)};Button("复制普通对战对手"){if let opponent=store.workspace.opponent {store.addLeagueTeam(opponent.workspace)}}}
+                HStack {
+                    Picker("我的测试球队",selection:Binding(get:{store.leagueSetup.testTeamID},set:{store.setLeagueTestTeam($0)})) {
+                        Text("未指定").tag(nil as UUID?)
+                        ForEach(store.leagueSetup.teams){Text($0.name).tag(Optional($0.id))}
+                    }.frame(width:330)
+                    Text("积分榜与球员数据会标记这支球队；编辑对手不会改变标记。").font(.system(size:11)).foregroundStyle(Theme.muted)
+                }
+                HStack {
+                    Picker("联赛统一战术",selection:Binding(get:{store.leagueSetup.defaultTactics ?? .fixed},set:{store.leagueSetup.defaultTactics=$0;store.saveLeagueSetup()})) {ForEach(TacticSelection.allCases){Text($0.rawValue).tag($0)}}.frame(width:300)
+                    Button("全部恢复统一设置"){for i in store.leagueSetup.teams.indices where !store.leagueSetup.teams[i].plan.management.tacticLocked {store.leagueSetup.teams[i].plan.management.selection=nil};store.saveLeagueSetup()}
+                    Button("统一采用普通主队战术",action:store.copyTacticsToLeague)
+                }
+                Text("统一设置用于未单独指定的对手；我的测试球队默认使用工作台战术。战术锁定的球队始终使用指定方案。").font(.caption).foregroundStyle(Theme.muted)
                 HStack {Stepper("随机生成 \(count) 队",value:$count,in:1...20).frame(width:190);Picker("能力档次",selection:$tier){ForEach(AbilityTier.allCases){Text($0.menuTitle).tag($0)}}.frame(width:200);Button("生成并加入"){store.addRandomTeams(count,tier:tier)};Spacer()}
                 Text("每支联赛球队都有自己的阵容、战术和定位球。复制只发生一次；之后的修改只保存到所选球队。随机生成的球队也可以逐人微调，或单独重抽能力。").font(.system(size:12)).foregroundStyle(Theme.muted)
                 ForEach(store.leagueSetup.teams) {team in
                     HStack {
+                        if team.id==store.leagueSetup.testTeamID {TestTeamBadge()}
                         VStack(alignment:.leading,spacing:4) {TextField("球队名称",text:Binding(get:{store.leagueSetup.teams.first{$0.id==team.id}?.name ?? team.name},set:{v in if let i=store.leagueSetup.teams.firstIndex(where:{$0.id==team.id}){store.leagueSetup.teams[i].displayName=v}})).font(.system(size:14,weight:.semibold)).textFieldStyle(.plain);Text("\(team.plan.players.count) 人 · \(team.plan.tactic.formation) / \(team.plan.tactic.defensiveFormation) · 战术：\(team.plan.tactic.name)").font(.system(size:11)).foregroundStyle(Theme.muted)}
-                        Spacer();Text(team.savedClubID.map{"存档球队 #\($0)"} ?? "自定义球队").font(.system(size:11)).foregroundStyle(Theme.muted)
+                        Spacer();Text(team.savedClubID.map{"导入球队 #\($0)"} ?? "自定义球队").font(.system(size:11)).foregroundStyle(Theme.muted)
                         Button("阵容与属性"){store.editLeagueTeam(team.id,page:"球员与阵容")}
                         Button("战术与定位球"){store.editLeagueTeam(team.id)}
                         Menu("随机本队能力"){ForEach(AbilityTier.allCases){tier in Button(tier.menuTitle){store.randomizeLeagueTeam(team.id,tier:tier)}}}
-                        Button("移除"){if store.leagueEditingTeam==team.id {store.leaveLeagueEditor(navigate:false)};store.leagueSetup.teams.removeAll{$0.id==team.id};store.leagueSetup.importedSchedule=nil}
+                        Button("移除"){store.removeLeagueTeam(team.id)}
                     }.padding(.vertical,5)
                     HStack {
+                        TacticSelectionControl(management:Binding(get:{store.leagueSetup.teams.first{$0.id==team.id}?.plan.management ?? team.plan.management},set:{m in if let i=store.leagueSetup.teams.firstIndex(where:{$0.id==team.id}) {store.leagueSetup.teams[i].plan.management=m;store.saveLeagueSetup()}}),inherited:team.id==store.leagueSetup.testTeamID ? .fixed:store.leagueSetup.defaultTactics ?? .fixed)
                         Text("主教练："+(team.plan.management.coach?.name ?? "未指定／未读取")+" · "+team.plan.management.tacticSource).font(.system(size:11)).foregroundStyle(Theme.muted)
                         Spacer()
                         Toggle("锁定战术",isOn:Binding(get:{store.leagueSetup.teams.first{$0.id==team.id}?.plan.management.tacticLocked ?? false},set:{v in if let i=store.leagueSetup.teams.firstIndex(where:{$0.id==team.id}){store.leagueSetup.teams[i].plan.management.tacticLocked=v;store.saveLeagueSetup()}})).toggleStyle(.checkbox).font(.system(size:11))
@@ -85,18 +100,18 @@ struct SaveImportPanel:View {
     @State private var search=""
     @State private var clubID:Int?
     @State private var leagueID:String?
-    @State private var sourceMode="存档当前阵容"
+    @State private var leagueSearch=""
     @State private var ranking:LeagueRankingRule = .goalDifference
     private var selectedLeague:SavedLeague? {store.saveCatalog?.leagues.first{$0.id==leagueID}}
     var body:some View {
         Card {
-            HStack {Label("从 FM27 存档读取",systemImage:"externaldrive").font(.system(size:17,weight:.semibold));Spacer();Button(store.saveCatalog==nil ? "选择 .fm 存档…":"更换存档…",action:store.chooseCareerSave).disabled(store.readingSave || store.leagueRunning)}
-            Picker("数据起点",selection:$sourceMode){Text("存档当前阵容").tag("存档当前阵容");Text("开档初始阵容").tag("开档初始阵容")}.pickerStyle(.segmented)
-            Text(sourceMode=="存档当前阵容" ? "选择 .fm，读取该日期的真实球队、球员与已保存赛程，再选择单队测试或整联赛。" : "使用数据库初始阵容时，请在 FM 中加载所需数据库与联赛，开档后立即保存，再选择这份 .fm。直接读取安装目录 .dat 尚未实现；初始化 JSON 是本工具的联赛备份。").font(.system(size:12)).foregroundStyle(Theme.muted)
+            HStack {Label("导入真实球队",systemImage:"externaldrive").font(.system(size:17,weight:.semibold));Spacer();Button("选择 .fm 存档…",action:store.chooseCareerSave);Button("读取游戏数据库"){store.chooseDatabase()};Menu("更多"){Button("选择 DAT 目录…"){store.chooseDatabase(automatic:false)}}}.disabled(store.readingSave || store.leagueRunning)
+            Text("存档保留当前球员与赛程；原始 DAT 读取安装数据库的初始球队和联赛。选择来源后，再导入单队或整联赛。").font(.system(size:12)).foregroundStyle(Theme.muted)
             if store.readingSave {HStack{ProgressView().controlSize(.small);Text(store.saveProgress);Spacer();Button("取消读取"){store.saveJob?.cancel()}}}
             else {Text(store.saveProgress).font(.system(size:11)).foregroundStyle(Theme.muted)}
             if let catalog=store.saveCatalog {
                 Text(catalog.sourceName+" · "+catalog.gameDate+" · "+catalog.build).font(.system(size:12,weight:.semibold))
+                if catalog.sourceKind=="database" {Text("未设定的球员属性由工具按位置、能力和固定种子补全；不是 FM 开档后的数值。原始值与补全数量保存在导入数据中。").font(.caption).foregroundStyle(Theme.amber)}
                 if let warning=catalog.calendarWarning {Text(warning).font(.system(size:12)).foregroundStyle(Theme.amber)}
                 else if catalog.leagues.isEmpty {Text("未找到已验证的完整双循环联赛。仍可导入单队，加入自定义联赛。").font(.system(size:12)).foregroundStyle(Theme.muted)}
                 HStack(alignment:.top,spacing:24) {
@@ -112,13 +127,14 @@ struct SaveImportPanel:View {
                     }.frame(maxWidth:.infinity)
                     VStack(alignment:.leading,spacing:12) {
                         Text("选择完整联赛").font(.system(size:14,weight:.semibold))
-                        Picker("已验证完整双循环赛程",selection:$leagueID) {Text("请选择联赛").tag(nil as String?);ForEach(catalog.leagues){league in Text(leagueLabel(league,catalog)).tag(Optional(league.id))}}
+                        TextField("搜索联赛名称或球队",text:$leagueSearch)
+                        Picker("可导入联赛",selection:$leagueID) {Text("请选择联赛").tag(nil as String?);ForEach(catalog.leagues.filter{leagueSearch.isEmpty || leagueLabel($0,catalog).localizedCaseInsensitiveContains(leagueSearch)}){league in Text(leagueLabel(league,catalog)).tag(Optional(league.id))}}
                         if let league=selectedLeague {
                             Text(league.clubIDs.compactMap{id in catalog.clubs.first{$0.id==id}?.name}.joined(separator:" · ")).font(.system(size:11)).foregroundStyle(Theme.muted)
                             Picker("排名规则（请核对）",selection:$ranking){ForEach(LeagueRankingRule.allCases){Text($0.rawValue).tag($0)}}
-                            Button("导入全部 \(league.clubIDs.count) 队与赛程"){store.importSavedClubs(league.clubIDs,league:league,ranking:ranking)}.disabled(store.readingSave || store.leagueRunning)
+                            Button("导入全部 \(league.clubIDs.count) 队"+(league.fixtures.isEmpty ? "":"与赛程")){store.importSavedClubs(league.clubIDs,league:league,ranking:ranking)}.disabled(store.readingSave || store.leagueRunning)
                         }
-                        Text("存档未提供可直接使用的联赛名称与完整排名条款。按赛事 ID 和参赛球队识别；在此选择排名规则，导入后可继续微调。").font(.system(size:10)).foregroundStyle(Theme.muted)
+                        Text(catalog.sourceKind=="database" ? "联赛归属来自 DAT。排名条款尚未自动解析，请在此选择规则。":"存档联赛按赛事 ID 和参赛球队识别；请选择排名规则，导入后可继续微调。").font(.system(size:10)).foregroundStyle(Theme.muted)
                     }.frame(maxWidth:.infinity)
                 }
                 DisclosureGroup("读取范围与来源说明") {ForEach(catalog.notes,id:\.self){Text($0).font(.system(size:11)).foregroundStyle(Theme.muted).frame(maxWidth:.infinity,alignment:.leading)}}
@@ -127,7 +143,7 @@ struct SaveImportPanel:View {
     }
     private func leagueLabel(_ l:SavedLeague,_ c:SaveCatalog)->String {
         let sample=l.clubIDs.prefix(2).compactMap{id in c.clubs.first{$0.id==id}?.name}.joined(separator:" / ")
-        return "#\(l.competitionID) · \(l.season) · \(l.clubIDs.count) 队 · "+sample
+        return (l.name.map{$0+" · "} ?? "")+"#\(l.competitionID) · \(l.season) · \(l.clubIDs.count) 队 · "+sample
     }
 }
 
@@ -136,6 +152,7 @@ struct LeagueReportView:View {
     let run:LeagueRun
     @State private var season=1
     @State private var playerTeam:UUID?
+    private var testID:UUID? {run.testTeam?.id}
     private var table:[LeagueStanding] {run.table(season:season)}
     private var games:[LeagueResult] {run.results.filter{$0.season==season}}
     var body:some View {
@@ -143,6 +160,14 @@ struct LeagueReportView:View {
             Card {
                 HStack {Text(run.setup.name).font(.system(size:23,weight:.bold));Spacer();Chip(text:run.status);Button("打开保存位置"){store.revealLeagueRun()};Button("完整 JSON"){store.exportLeagueResults()};Button("导出联赛报告"){store.exportLeagueReport()}}
                 Text("有效 \(run.results.count) / \(run.expected) 场 · 完整赛季 \(run.completedSeasons.count) / \(run.seasons)").font(.system(size:14))
+                HStack {
+                    Picker("我的测试球队",selection:Binding(get:{testID},set:{if let id=$0 {store.setReportTestTeam(id)}})) {
+                        Text("请选择要标记的球队").tag(nil as UUID?)
+                        ForEach(run.setup.teams){Text($0.name).tag(Optional($0.id))}
+                    }.frame(width:360).disabled(store.leagueRunning)
+                    if testID != nil {TestTeamBadge()}
+                    Text("标记随报告保存，不改变排名、战术或比赛结果。").font(.system(size:11)).foregroundStyle(Theme.muted)
+                }
                 Text("本报告使用开赛时保存的球队与规则。修改球队只影响新实验；继续上次实验仍用原配置。").font(.system(size:12)).foregroundStyle(Theme.muted)
                 Text(run.setup.rules.description).font(.system(size:12)).foregroundStyle(Theme.muted)
                 Text(run.setup.rules.limitation).font(.system(size:11)).foregroundStyle(Theme.muted)
@@ -152,24 +177,24 @@ struct LeagueReportView:View {
             Card {
                 HStack {Text(run.completedSeasons.contains(season) ? "赛季积分榜":"进行中积分榜 · \(games.count) / \(run.schedule.count) 场").font(.system(size:17,weight:.semibold));Spacer();Text("同名次标记为并列／待决").font(.system(size:11)).foregroundStyle(Theme.muted)}
                 HStack {Text("排名").frame(width:55);Text("球队").frame(maxWidth:.infinity,alignment:.leading);ForEach(["赛","胜","平","负","进","失","净胜","积分"],id:\.self){Text($0).frame(width:49)}}.font(.system(size:11)).foregroundStyle(Theme.muted)
-                ForEach(table){r in HStack{Text("\(r.rank)"+(r.tied ? " ≈":"")).frame(width:55);Text(r.name).frame(maxWidth:.infinity,alignment:.leading);ForEach([r.played,r.wins,r.draws,r.losses,r.goalsFor,r.goalsAgainst,r.goalDifference,r.points].indices,id:\.self){i in Text(String([r.played,r.wins,r.draws,r.losses,r.goalsFor,r.goalsAgainst,r.goalDifference,r.points][i])).frame(width:49)}}.font(.system(size:12)).monospacedDigit();Divider()}
+                ForEach(table){r in HStack{Text("\(r.rank)"+(r.tied ? " ≈":"")).frame(width:55);LeagueTeamLabel(name:r.name,highlighted:r.id==testID).frame(maxWidth:.infinity,alignment:.leading);ForEach([r.played,r.wins,r.draws,r.losses,r.goalsFor,r.goalsAgainst,r.goalDifference,r.points].indices,id:\.self){i in Text(String([r.played,r.wins,r.draws,r.losses,r.goalsFor,r.goalsAgainst,r.goalDifference,r.points][i])).frame(width:49)}}.font(.system(size:12)).monospacedDigit().testTeamHighlight(r.id==testID);Divider()}
             }
             Card {
                 Text("积分分布").font(.system(size:17,weight:.semibold))
-                Chart(table){row in BarMark(x:.value("积分",row.points),y:.value("球队",row.name)).foregroundStyle(Theme.green)}.frame(height:CGFloat(max(200,table.count*25)))
+                Chart(table){row in BarMark(x:.value("积分",row.points),y:.value("球队",(row.id==testID ? "★ ":"")+row.name)).foregroundStyle(testID==nil || row.id==testID ? Theme.green:Theme.green.opacity(0.3))}.chartYAxis {AxisMarks(preset:.aligned,position:.leading){_ in AxisValueLabel(anchor:.trailing)}}.frame(height:CGFloat(max(200,table.count*25)))
             }
             if run.completedSeasons.count>1 {
                 Card {
                     Text("重复赛季 · 排名范围").font(.system(size:17,weight:.semibold))
                     Text("只纳入完整赛季；范围反映固定阵容下的随机波动。").font(.system(size:11)).foregroundStyle(Theme.muted)
-                    ForEach(run.setup.teams){team in let ranks=run.completedSeasons.compactMap{run.table(season:$0).first{$0.id==team.id}?.rank};HStack{Text(team.name);Spacer();Text("平均 "+String(format:"%.1f",Double(ranks.reduce(0,+))/Double(max(1,ranks.count)))+" · 最好 \(ranks.min() ?? 0) / 最差 \(ranks.max() ?? 0)")}.font(.system(size:12))}
+                    ForEach(run.setup.teams){team in let ranks=run.completedSeasons.compactMap{run.table(season:$0).first{$0.id==team.id}?.rank};HStack{LeagueTeamLabel(name:team.name,highlighted:team.id==testID);Spacer();Text("平均 "+String(format:"%.1f",Double(ranks.reduce(0,+))/Double(max(1,ranks.count)))+" · 最好 \(ranks.min() ?? 0) / 最差 \(ranks.max() ?? 0)")}.font(.system(size:12)).testTeamHighlight(team.id==testID)}
                 }
             }
             LeagueTeamStatisticsTable(run:run,season:season)
             TacticPerformanceView(run:run,season:season)
             Card {
-                HStack {Text("球队战术复盘").font(.system(size:17,weight:.semibold));Spacer();Picker("分析球队",selection:Binding(get:{playerTeam ?? run.setup.teams.first!.id},set:{playerTeam=$0})){ForEach(run.setup.teams){Text($0.name).tag($0.id)}}.frame(width:260)}
-                let selected=playerTeam ?? run.setup.teams.first!.id
+                HStack {Text("球队战术复盘").font(.system(size:17,weight:.semibold));if (playerTeam ?? testID)==testID,testID != nil {TestTeamBadge()};Spacer();Picker("分析球队",selection:Binding(get:{playerTeam ?? testID ?? run.setup.teams.first!.id},set:{playerTeam=$0})){ForEach(run.setup.teams){Text(($0.id==testID ? "★ ":"")+$0.name).tag($0.id)}}.frame(width:260)}
+                let selected=playerTeam ?? testID ?? run.setup.teams.first!.id
                 let selectedGames=games.filter{$0.fixture.home==selected || $0.fixture.away==selected}
                 let sides=Dictionary(uniqueKeysWithValues:selectedGames.map{($0.report.seed,$0.fixture.home==selected ? 0:1)})
                 Text("本队始终指所选球队，主客场已统一；对手合计来自本赛季实际对阵的球队。").font(.system(size:11)).foregroundStyle(Theme.muted)
@@ -178,10 +203,10 @@ struct LeagueReportView:View {
             LeaguePlayerTable(run:run,season:season)
             Card {
                 Text("逐场成绩 · 最近 100 场").font(.system(size:17,weight:.semibold))
-                ForEach(Array(games.suffix(100))){g in HStack{Text(g.fixture.date ?? "第 \(g.fixture.round) 轮").foregroundStyle(Theme.muted).frame(width:95);Text(g.report.configuration?.teams[0].name ?? "主队").frame(maxWidth:.infinity,alignment:.trailing);Text("\(g.report.score[0]) : \(g.report.score[1])").fontWeight(.semibold).frame(width:75);Text(g.report.configuration?.teams[1].name ?? "客队").frame(maxWidth:.infinity,alignment:.leading);Text("种子 \(g.report.seed)").foregroundStyle(Theme.muted).frame(width:100)}.font(.system(size:12))}
+                ForEach(Array(games.suffix(100))){g in HStack{Text(g.fixture.date ?? "第 \(g.fixture.round) 轮").foregroundStyle(Theme.muted).frame(width:95);LeagueTeamLabel(name:g.report.configuration?.teams[0].name ?? "主队",highlighted:g.fixture.home==testID).frame(maxWidth:.infinity,alignment:.trailing);Text("\(g.report.score[0]) : \(g.report.score[1])").fontWeight(.semibold).frame(width:75);LeagueTeamLabel(name:g.report.configuration?.teams[1].name ?? "客队",highlighted:g.fixture.away==testID).frame(maxWidth:.infinity,alignment:.leading);Text("种子 \(g.report.seed)").foregroundStyle(Theme.muted).frame(width:100)}.font(.system(size:12)).testTeamHighlight(g.fixture.home==testID || g.fixture.away==testID)}
                 Text("完整成绩、球员数据与配置快照随报告导出；每场原始日志保存在本机。").font(.system(size:11)).foregroundStyle(Theme.muted)
             }
-        }.onChange(of:run.id){_,_ in season=1}
+        }.onChange(of:run.id){_,_ in season=1;playerTeam=nil}.onChange(of:testID){_,_ in playerTeam=nil}
     }
 }
 
@@ -194,7 +219,7 @@ struct LeagueTeamStatisticsTable:View {
                 VStack(spacing:10) {
                     HStack {Text("球队").frame(width:180,alignment:.leading);ForEach(["xG","射门","射正","传球","成功传球","控球 %","黄牌","红牌"],id:\.self){Text($0).frame(width:98)}}.font(.system(size:11)).foregroundStyle(Theme.muted)
                     ForEach(LeagueTeamTotal.aggregate(run:run,season:season)){t in
-                        HStack {Text(t.name).frame(width:180,alignment:.leading);ForEach(["xg","shots","shots_on_target","passes","completed_passes","possession","yellow_cards","red_cards"],id:\.self){key in Text([t.mean(key),t.mean(key,against:true)].map{$0.map{String(format:"%.1f",$0)} ?? "—"}.joined(separator:" / ")).monospacedDigit().frame(width:98)}}.font(.system(size:11));Divider()
+                        HStack {LeagueTeamLabel(name:t.name,highlighted:t.id==run.testTeam?.id).frame(width:180,alignment:.leading);ForEach(["xg","shots","shots_on_target","passes","completed_passes","possession","yellow_cards","red_cards"],id:\.self){key in Text([t.mean(key),t.mean(key,against:true)].map{$0.map{String(format:"%.1f",$0)} ?? "—"}.joined(separator:" / ")).monospacedDigit().frame(width:98)}}.font(.system(size:11)).testTeamHighlight(t.id==run.testTeam?.id);Divider()
                     }
                 }
             }
@@ -208,11 +233,14 @@ struct LeaguePlayerTable:View {
     var body:some View {
         Card {
             HStack {Text("球员数据榜").font(.system(size:17,weight:.semibold));Spacer();Picker("球队",selection:$team){Text("全部球队").tag(nil as UUID?);ForEach(run.setup.teams){Text($0.name).tag(Optional($0.id))}}.frame(width:240)}
+            if let mine=run.testTeam {
+                HStack {TestTeamBadge();Text(mine.name).font(.system(size:12));Spacer();Toggle("只看我的球队",isOn:Binding(get:{team==mine.id},set:{team=$0 ? mine.id:nil})).toggleStyle(.checkbox).font(.system(size:12))}
+            }
             Text("累计数据；列出前 50 人。助攻来自终场进球记录；旧报告缺失项、未验证的评分和分钟数不补零。").font(.system(size:11)).foregroundStyle(Theme.muted)
             HStack {Text("球员 / 球队").frame(maxWidth:.infinity,alignment:.leading);ForEach(["进球","助攻","xG","射门","射正","传球","成功","黄牌","红牌"],id:\.self){Text($0).frame(width:56)}}.font(.system(size:11)).foregroundStyle(Theme.muted)
             ForEach(LeaguePlayerTotal.aggregate(run:run,season:season).filter{team==nil || $0.teamID==team}.prefix(50)) {p in
-                HStack {VStack(alignment:.leading,spacing:3){Text(p.name);Text(p.teamName).font(.system(size:10)).foregroundStyle(Theme.muted)}.frame(maxWidth:.infinity,alignment:.leading);ForEach(["goals","assists","xg","shots","shots_on_target","passes","completed_passes","yellow_cards","red_cards"],id:\.self){key in Text(p.statistics[key].map{String(format:key=="xg" ? "%.2f":"%.0f",$0)} ?? "—").monospacedDigit().frame(width:56)}}.font(.system(size:12));Divider()
+                HStack {VStack(alignment:.leading,spacing:3){HStack{Text(p.name).fontWeight(p.teamID==run.testTeam?.id ? .semibold:.regular);if p.teamID==run.testTeam?.id {TestTeamBadge()}};Text(p.teamName).font(.system(size:10)).foregroundStyle(Theme.muted)}.frame(maxWidth:.infinity,alignment:.leading);ForEach(["goals","assists","xg","shots","shots_on_target","passes","completed_passes","yellow_cards","red_cards"],id:\.self){key in Text(p.statistics[key].map{String(format:key=="xg" ? "%.2f":"%.0f",$0)} ?? "—").monospacedDigit().frame(width:56)}}.font(.system(size:12)).testTeamHighlight(p.teamID==run.testTeam?.id);Divider()
             }
-        }
+        }.onChange(of:run.id){_,_ in team=nil}.onChange(of:run.testTeam?.id){old,new in if team==old {team=new}}
     }
 }

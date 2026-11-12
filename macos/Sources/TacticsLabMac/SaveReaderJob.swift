@@ -14,7 +14,7 @@ final class SaveReaderJob:@unchecked Sendable {
         if !clubs.isEmpty {p.arguments! += ["--clubs",clubs.map(String.init).joined(separator:",")]}
         if let hash {p.arguments! += ["--expected-sha256",hash]}
         p.standardOutput=handle;p.standardError=handle
-        lock.lock();if cancelled {lock.unlock();throw LabError("存档读取已取消。")};process=p
+        lock.lock();if cancelled {lock.unlock();throw LabError("数据读取已取消。")};process=p
         do {try p.run();lock.unlock()}catch{process=nil;lock.unlock();throw error}
         let timeout=DispatchWorkItem{[weak self] in self?.cancel()}
         DispatchQueue.global().asyncAfter(deadline:.now()+310,execute:timeout)
@@ -23,7 +23,7 @@ final class SaveReaderJob:@unchecked Sendable {
         guard !stopped,p.terminationStatus==0 else {
             let lines=(try? String(contentsOf:log,encoding:.utf8)) ?? ""
             let failure=lines.split(separator:"\n").reversed().compactMap{try? JSONSerialization.jsonObject(with:Data($0.utf8)) as? [String:Any]}.first? ["error"] as? String
-            throw LabError(stopped ? "存档读取已取消或超过时限。":failure ?? "存档读取失败。原文件未修改，诊断日志已保留。")
+            throw LabError(stopped ? "数据读取已取消或超过时限。":failure ?? "数据读取失败。原文件未修改，诊断日志已保留。")
         }
         guard (try output.resourceValues(forKeys:[.fileSizeKey]).fileSize ?? 0)<=60_000_000 else {throw LabError("读取结果超过 60 MB，请减少导入球队。")}
         return try Data(contentsOf:output)

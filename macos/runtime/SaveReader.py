@@ -89,7 +89,13 @@ def main():
     parser.add_argument('--clubs',default='')
     parser.add_argument('--expected-sha256')
     args=parser.parse_args()
-    source=args.source.resolve();before=source.stat()
+    source=args.source.resolve()
+    resource.setrlimit(resource.RLIMIT_CORE,(0,0));signal.alarm(300)
+    if source.is_dir() or source.suffix.lower()=='.dat':
+        from DatabaseReader import load
+        result=load(source,{int(x) for x in args.clubs.split(',') if x},args.expected_sha256)
+        write(args.output,result);print(json.dumps({'status':'complete','output':str(args.output),'sourceSHA256':result['sourceSHA256']}),flush=True);return
+    before=source.stat()
     if source.suffix.lower()!='.fm' or not 0<before.st_size<=2*1024**3: raise ValueError('请选择不超过 2 GiB 的 FM27 .fm 存档。原始数据库 .dat 与编辑器 .fmf 使用其他格式。')
     resource.setrlimit(resource.RLIMIT_CORE,(0,0))
     signal.alarm(300)
@@ -111,7 +117,9 @@ def main():
             fields=['uid','unique_id','name','positions','raw_attributes','raw_left_foot','raw_right_foot','height_cm','age','ability','personality','trait_bits','reputation']
             for p in players:
                 if p.team_slot==0: squads[p.club_uid].append({k:plain(getattr(p,k)) for k in fields})
-            result['rosters']=[{'clubID':uid,'name':known[uid].short_name or known[uid].name,'players':squads[uid]} for uid in sorted(wanted)]
+            from CoachReader import coaches
+            staff=coaches(save,wanted)
+            result['rosters']=[{'clubID':uid,'name':known[uid].short_name or known[uid].name,'players':squads[uid],'coach':staff.get(uid)} for uid in sorted(wanted)]
             if any(not 11<=len(r['players'])<=100 for r in result['rosters']): raise ValueError('有球队的一线队注册名单不足 11 人或超过 100 人；请另选球队，或在游戏中核对注册情况。')
         else:
             result['clubs']=[{'id':c.uid,'name':c.short_name or c.name} for c in save.clubs()]

@@ -17,7 +17,7 @@ import TacticsCore
                 Button("阵容方案库…") { store.showTeamPresets = true }.keyboardShortcut("l",modifiers:[.command,.shift])
                 Button("导入游戏战术 FMF…",action:store.importGameTactic)
                 Button("导出游戏战术 FMF…",action:store.exportGameTactic)
-                Button("从 FM 存档导入球队…") {store.showSaveImporter=true}
+                Button("从存档或 DAT 导入球队…") {store.showSaveImporter=true}
                 Button("打开方案…", action:store.importWorkspace).keyboardShortcut("o")
                 Button("导出方案…", action:store.exportWorkspace).keyboardShortcut("s",modifiers:[.command,.shift])
                 Button("保存", action:store.save).keyboardShortcut("s")
@@ -370,7 +370,7 @@ struct RootView: View {
                     HStack { Circle().fill(Color.orange.opacity(0.8)).frame(width:6,height:6); Text("本地编辑与分析").font(.system(size:12,weight:.medium)) }
                     Text(store.runningOriginal || store.leagueRunning ? "原版比赛计算中" : "原版引擎 · 自定义测试").font(.system(size:11)).foregroundStyle(.white.opacity(0.55))
                     Divider().overlay(.white.opacity(0.1)).padding(.vertical,7)
-                    Text("v0.7.0 · 原生 macOS").font(.system(size:10)).foregroundStyle(.white.opacity(0.4))
+                    Text("v0.8.0 · 原生 macOS").font(.system(size:10)).foregroundStyle(.white.opacity(0.4))
                 }.padding(22)
             }.frame(width:202).foregroundStyle(.white).background(Theme.ink)
             VStack(spacing:0) {
@@ -401,7 +401,7 @@ struct RootView: View {
             }
             Spacer()
             if ["战术工作台","球员与阵容","联赛实验"].contains(store.page) { Button("阵容方案库") { store.showTeamPresets = true } }
-            if ["战术工作台","球员与阵容","联赛实验"].contains(store.page) {Button("从 FM 存档导入"){store.showSaveImporter=true}.disabled(store.processingTactic)}
+            if ["战术工作台","球员与阵容","联赛实验"].contains(store.page) {Button("导入真实球队"){store.showSaveImporter=true}.disabled(store.processingTactic)}
             if store.page == "战术工作台" {
                 Button(action:store.undo) { Image(systemName:"arrow.uturn.backward") }.disabled(!store.canUndo).help("撤销 ⌘Z")
                 Menu("战术文件") {

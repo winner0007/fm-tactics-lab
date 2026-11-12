@@ -1,6 +1,18 @@
 import Foundation
 
 extension NativeTeamInput {
+    /// Keep stored notes unchanged for old experiment fingerprints.
+    public var executionNotes:[String] {
+        notes.map {text in
+            if preparationSource != nil,text.hasPrefix("双方由手动战术控制") {
+                return "本场使用已保存的赛前方案；首发 11 人及最多 9 名候补，不运行生涯 AI 临场执教。"
+            }
+            return text
+        }
+    }
+}
+
+extension NativeTeamInput {
     public var playerInstructionLines:[String] {
         phases.enumerated().flatMap {phase,cells in cells.enumerated().compactMap {i,c in
             let choices=c.instructions.compactMap {id in NativeCatalog.playerInstructions.first{$0.options.contains{$0.id==id}}.flatMap{g in g.options.first{$0.id==id}.map{g.label+"："+$0.label}}}

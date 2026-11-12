@@ -3,16 +3,20 @@ import CryptoKit
 
 public struct NativeScenario:Codable,Equatable {
     public var schemaVersion=1
-    public let teams:[NativeTeamInput]
+    public var teams:[NativeTeamInput]
     public var data:Data {let e=JSONEncoder();e.outputFormatting=[.sortedKeys];return try! e.encode(self)}
     public var sha256:String {SHA256.hash(data:data).map{String(format:"%02x",$0)}.joined()}
     public init(workspace:Workspace) throws {
-        let w=try workspace.validated()
-        let other=w.opponent!.workspace
+        let w=try workspace.validated().selectedTactics()
+        let other=w.opponent!.workspace.selectedTactics()
         var own=try NativeTeamInput(players:w.players,tactic:w.startingTactic,opponent:other)
         var away=try NativeTeamInput(players:other.players,tactic:other.startingTactic,opponent:w)
-        if w.matchStrategy?.enabled==true {own.strategy=try NativeMatchStrategy(workspace:w,opponent:other)}
-        if other.matchStrategy?.enabled==true {away.strategy=try NativeMatchStrategy(workspace:other,opponent:w)}
+        if w.tacticSelection == .fixed && w.matchStrategy?.enabled==true {own.strategy=try NativeMatchStrategy(workspace:w,opponent:other)}
+        if other.tacticSelection == .fixed && other.matchStrategy?.enabled==true {away.strategy=try NativeMatchStrategy(workspace:other,opponent:w)}
+        if w.tacticSelection == .originalAI {own.generation=NativeCoachRequest(w.management.coach)}
+        if other.tacticSelection == .originalAI {away.generation=NativeCoachRequest(other.management.coach)}
+        if w.tacticSelection == .random {own.preparationSource="随机战术 · 种子 \(w.management.tacticSeed ?? 42)"}
+        if other.tacticSelection == .random {away.preparationSource="随机战术 · 种子 \(other.management.tacticSeed ?? 42)"}
         teams=[own,away]
         if own.strategy != nil || away.strategy != nil {schemaVersion=2}
         _ = try validated()
@@ -20,6 +24,10 @@ public struct NativeScenario:Codable,Equatable {
     public func validated()throws->Self {
         guard (1...2).contains(schemaVersion),teams.count==2,(schemaVersion==2)==teams.contains(where:{$0.strategy != nil}) else {throw LabError("比赛配置必须包含两支球队，并声明正确的临场策略格式。")}
         for (side,t) in teams.enumerated() {
+            if let coach=t.generation {
+                guard t.strategy==nil,!coach.name.isEmpty,coach.name.count<=80 else{throw LabError("AI 战术不能同时使用手动临场方案。")}
+                if let profile=coach.parameters {guard profile.count==52,profile.allSatisfy({(0...100).contains($0)}),let codes=coach.formationCodes,codes.count==8,codes.allSatisfy({(0...64).contains($0)}) else{throw LabError("AI 教练参数不完整。")}}
+            }
             if let strategy=t.strategy {
                 guard strategy.plans.count==3,(0..<3).contains(strategy.kickoffSlot),(1...30).contains(strategy.cooldownMinutes),strategy.rules.count<=12,
                       Set(strategy.rules.map(\.id)).count==strategy.rules.count,
@@ -80,6 +88,8 @@ public struct NativePlayerInput:Codable,Equatable {
     }
 }
 public struct NativeTeamInput:Codable,Equatable {
+    public var preparationSource:String? = nil
+    public var generation:NativeCoachRequest? = nil
     public var extraTeamBits:String? = nil
     public var strategy:NativeMatchStrategy? = nil
     public var name:String
@@ -87,9 +97,9 @@ public struct NativeTeamInput:Codable,Equatable {
     public var formation:String
     public var defendingFormation:String
     public var instructions:[NativeInstructionInput]
-    public let players:[NativePlayerInput]
+    public var players:[NativePlayerInput]
     public var phases:[[NativeCellInput]]
-    public let setPieces:NativeSetPieceInput
+    public var setPieces:NativeSetPieceInput
     public let notes:[String]
     public func withTactic(_ plan:NativeTacticInput)->Self {
         var copy=self;copy.strategy=nil;copy.name=plan.name;copy.mentality=plan.mentality

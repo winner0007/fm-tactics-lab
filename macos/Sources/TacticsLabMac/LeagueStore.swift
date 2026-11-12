@@ -12,12 +12,36 @@ extension LabStore {
         guard !preview else{return}
         do {try FileManager.default.createDirectory(at:storage,withIntermediateDirectories:true);try JSONEncoder().encode(leagueSetup).write(to:storage.appendingPathComponent("league-setup.json"),options:.atomic)}catch{self.error=error.localizedDescription}
     }
-    func addLeagueTeam(_ plan:Workspace,savedClubID:Int?=nil) {
+    func addLeagueTeam(_ plan:Workspace,savedClubID:Int?=nil,markAsTestTeam:Bool=false) {
         guard leagueSetup.teams.count<40 else {error="联赛最多 40 支球队。";return}
         var own=plan;own.opponent=nil
         let names=Set(leagueSetup.teams.map(\.name));let base=own.tactic.name
         var i=2;while names.contains(own.tactic.name) {own.tactic.name=base+" \(i)";i+=1}
-        leagueSetup.teams.append(LeagueTeam(plan:own,savedClubID:savedClubID));leagueSetup.importedSchedule=nil;saveLeagueSetup()
+        let team=LeagueTeam(plan:own,savedClubID:savedClubID)
+        leagueSetup.teams.append(team)
+        if markAsTestTeam || (leagueSetup.testTeamID==nil && savedClubID.map{saveCatalog?.managedClubIDs.contains($0)==true}==true) {leagueSetup.testTeamID=team.id}
+        leagueSetup.importedSchedule=nil;saveLeagueSetup()
+    }
+    func setLeagueTestTeam(_ id:UUID?) {
+        guard !leagueRunning,id.map({v in leagueSetup.teams.contains{$0.id==v}}) ?? true else{return}
+        leagueSetup.testTeamID=id;saveLeagueSetup()
+    }
+    func setReportTestTeam(_ id:UUID) {
+        guard !leagueRunning,var run=leagueRun,run.setup.teams.contains(where:{$0.id==id}) else{return}
+        run.reportTeamID=id
+        do {
+            let folder=storage.appendingPathComponent("league-runs").appendingPathComponent(run.id.uuidString)
+            try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+            try JSONEncoder().encode(run).write(to:folder.appendingPathComponent("run.json"),options:.atomic)
+            leagueRun=run
+        } catch {self.error="球队标记未能保存："+error.localizedDescription}
+    }
+    func removeLeagueTeam(_ id:UUID) {
+        guard !leagueRunning else{return}
+        if leagueEditingTeam==id {leaveLeagueEditor(navigate:false)}
+        leagueSetup.teams.removeAll{$0.id==id}
+        if leagueSetup.testTeamID==id {leagueSetup.testTeamID=nil}
+        leagueSetup.importedSchedule=nil;saveLeagueSetup()
     }
     func addRandomTeams(_ count:Int,tier:AbilityTier) {
         guard leagueSetup.teams.count+count<=40 else {error="联赛最多 40 支球队。";return}
@@ -74,13 +98,23 @@ extension LabStore {
     }
     func chooseCareerSave() {
         guard !readingSave else{return}
-        guard let url=choose(types:[UTType(filenameExtension:"fm") ?? .data],message:"只读导入 FM27 职业生涯存档。先选球队或联赛，再读取一线队阵容。原始数据库 .dat 与编辑器 .fmf 暂不支持。") else{return}
+        guard let url=choose(types:[UTType(filenameExtension:"fm") ?? .data],message:"只读导入 FM27 职业生涯存档。先选球队或联赛，再读取一线队阵容。原始数据库请使用“读取游戏数据库”。") else{return}
         readCareerSave(url)
+    }
+    func chooseDatabase(automatic:Bool=true) {
+        guard !readingSave,!leagueRunning else{return}
+        if automatic,let app=engine.appPath {
+            let root=URL(fileURLWithPath:app).appendingPathComponent("Contents/PlugIns/game_plugin.bundle/Contents/Resources/shared/data/database/db/2700/2700_fm")
+            if FileManager.default.fileExists(atPath:root.appendingPathComponent("server_db.dat").path) {readCareerSave(root);return}
+        }
+        let panel=NSOpenPanel();panel.canChooseDirectories=true;panel.canChooseFiles=true;panel.allowsMultipleSelection=false
+        panel.message="选择完整的 2700_fm 数据库目录，或其中的 .dat 文件。组件需保存在同一目录。"
+        if panel.runModal() == .OK,let url=panel.url {readCareerSave(url)}
     }
     func readerHelper()->URL? {Bundle.main.url(forResource:"SaveReader",withExtension:nil,subdirectory:"SaveReader")}
     func readCareerSave(_ source:URL) {
         guard !readingSave,let helper=readerHelper() else {error="安装包缺少存档读取组件。";return}
-        readingSave=true;saveProgress="正在读取球队与联赛赛程…"
+        readingSave=true;saveProgress="正在读取球队与联赛目录…"
         let folder=storage.appendingPathComponent("save-imports").appendingPathComponent(UUID().uuidString),job=SaveReaderJob();saveJob=job
         Task {
             defer{readingSave=false;saveJob=nil}
@@ -94,7 +128,7 @@ extension LabStore {
     func importSavedClubs(_ ids:[Int],league:SavedLeague?=nil,toWorkbench:Bool=false,ranking:LeagueRankingRule?=nil) {
         guard !readingSave,let source=saveSource,let catalog=saveCatalog,let helper=readerHelper() else{return}
         let destinationTeam=leagueEditingTeam,destinationSide=editingSide
-        readingSave=true;saveProgress="正在读取 \(ids.count) 支球队的一线队原始属性…"
+        readingSave=true;saveProgress="正在读取 \(ids.count) 支球队的球员与教练资料…"
         let folder=storage.appendingPathComponent("save-imports").appendingPathComponent(UUID().uuidString),job=SaveReaderJob();saveJob=job
         Task {
             defer{readingSave=false;saveJob=nil}
@@ -109,11 +143,12 @@ extension LabStore {
                     var replacement=first.plan;replacement.opponent=editing.opponent;try editing.checkReplacement(replacement)
                     change{w in let other=w.opponent;w=first.plan;w.opponent=other};page="球员与阵容";showSaveImporter=false
                 } else if let league {
-                    var setup=LeagueSetup();if let ranking {setup.rules.ranking=ranking};setup.teams=teams;setup.name="存档联赛 #\(league.competitionID) · \(league.season)"
+                    var setup=LeagueSetup();if let ranking {setup.rules.ranking=ranking};setup.teams=teams;setup.name=(league.name ?? "存档联赛 #\(league.competitionID)")+" · \(league.season)"
                     setup.source=catalog.sourceName+" · "+catalog.gameDate+" · "+catalog.sourceSHA256
                     let lookup=Dictionary(uniqueKeysWithValues:teams.map{($0.savedClubID!,$0.id)})
+                    setup.testTeamID=catalog.managedClubIDs.compactMap{lookup[$0]}.first
                     let dates=Array(Set(league.fixtures.compactMap(\.date))).sorted()
-                    setup.importedSchedule=league.fixtures.map{LeagueFixture(home:lookup[$0.home]!,away:lookup[$0.away]!,round:($0.date.flatMap{dates.firstIndex(of:$0)} ?? 0)+1,date:$0.date)}
+                    setup.importedSchedule=league.fixtures.isEmpty ? nil:league.fixtures.map{LeagueFixture(home:lookup[$0.home]!,away:lookup[$0.away]!,round:($0.date.flatMap{dates.firstIndex(of:$0)} ?? 0)+1,date:$0.date)}
                     _ = try setup.validated();try archiveLeagueSetup();leagueSetup=setup;leaveLeagueEditor(navigate:false);saveLeagueSetup();showSaveImporter=false;page="联赛实验";leagueSection="球队与规则"
                 } else {
                     guard leagueSetup.teams.count+teams.count<=40 else {throw LabError("加入后超过 40 队，请先减少参赛球队。")}
@@ -155,6 +190,7 @@ extension LabStore {
         let workers=simulationWorkers,queue=MatchQueue();leagueQueue=queue
         error=nil;leagueSection="积分与统计";leagueRunning=true;leagueCancelled=false;leagueProgress="正在校验全部球队与赛程…"
         Task {
+            var activeRunStarted=false
             do {
                 var run:LeagueRun
                 if resume,let previous {run=try await Task.detached{try previous.validated()}.value;run.status="运行中";run.failure=nil}
@@ -162,14 +198,29 @@ extension LabStore {
                 try run.validateEngine(expectedEngine);run.engineSHA256=expectedEngine
                 run.workers=workers
                 leagueRun=run
+                activeRunStarted=true
                 let folder=storage.appendingPathComponent("league-runs").appendingPathComponent(run.id.uuidString)
                 try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
                 try JSONEncoder().encode(run).write(to:folder.appendingPathComponent("run.json"),options:.atomic)
                 try JSONEncoder().encode(run.id).write(to:storage.appendingPathComponent("latest-league.json"),options:.atomic)
+                // Resolve each home/away pairing once, then persist before any match.
+                for (i,fixture) in run.schedule.enumerated() where run.preparedTactics?[fixture.id]==nil {
+                    let requested=try run.setup.scenario(fixture)
+                    if requested.teams.contains(where:{$0.generation != nil}) {
+                        guard !leagueCancelled else {throw LabError("已停止战术准备。")}
+                        leagueProgress="原版 AI 制定战术 · 对阵 \(i+1) / \(run.schedule.count)"
+                        let generationSeed=run.firstSeed+UInt32(i),target=folder.appendingPathComponent("tactics").appendingPathComponent(fixture.id.uuidString)
+                        let job=TacticGenerationJob();tacticGenerationJob=job
+                        let prep=try await Task.detached{try job.run(helper:helper,app:URL(fileURLWithPath:path),scenario:requested,seed:generationSeed,folder:target)}.value
+                        if run.preparedTactics==nil {run.preparedTactics=[:]};run.preparedTactics?[fixture.id]=prep
+                        try JSONEncoder().encode(run).write(to:folder.appendingPathComponent("run.json"),options:.atomic);leagueRun=run
+                    }
+                }
+                tacticGenerationJob=nil
                 let indices=try SimulationConcurrency.missing(requested:run.expected,firstSeed:run.firstSeed,seeds:run.results.map{$0.report.seed})
                 do {
                     try await queue.run(indices:indices,workers:workers,helper:helper,app:URL(fileURLWithPath:path),request:{index in
-                        let fixture=run.schedule[index%run.schedule.count],scenario=try run.setup.scenario(fixture)
+                        let fixture=run.schedule[index%run.schedule.count],scenario=try run.scenario(fixture)
                         self.leagueProgress="\(min(workers,indices.count)) 路并行 · 已完成 \(run.results.count) / \(run.expected) 场"
                         let log=folder.appendingPathComponent("matches").appendingPathComponent(String(format:"%05d",index)).appendingPathComponent("match.jsonl")
                         return MatchRequest(index:index,seed:run.firstSeed+UInt32(index),log:log,scenario:scenario)
@@ -186,11 +237,19 @@ extension LabStore {
                 leagueRun=run;try JSONEncoder().encode(run).write(to:folder.appendingPathComponent("run.json"),options:.atomic)
                 leagueProgress="\(run.status) · \(run.results.count) / \(run.expected) 场";refreshLeagueArchives()
                 if let failure=run.failure {error=failure}
-            } catch {self.error=error.localizedDescription}
-            leagueQueue=nil;leagueRunning=false
+            } catch {
+                if !leagueCancelled {self.error=error.localizedDescription}
+                if activeRunStarted,var run=leagueRun {
+                    run.status=leagueCancelled ? "已停止":"未完成";run.failure=leagueCancelled ? nil:error.localizedDescription
+                    let file=storage.appendingPathComponent("league-runs").appendingPathComponent(run.id.uuidString).appendingPathComponent("run.json")
+                    do {try JSONEncoder().encode(run).write(to:file,options:.atomic);leagueRun=run}catch{self.error=error.localizedDescription}
+                    leagueProgress="\(run.status) · 已保留战术准备与比赛结果";refreshLeagueArchives()
+                }
+            }
+            tacticGenerationJob=nil;leagueQueue=nil;leagueRunning=false
         }
     }
-    func stopLeague(){leagueCancelled=true;leagueQueue?.cancel()}
+    func stopLeague(){leagueCancelled=true;tacticGenerationJob?.cancel();leagueQueue?.cancel()}
     func exportLeagueReport() {
         guard let leagueRun else{return}
         export(Data(LeagueExport.html(leagueRun).utf8),name:"联赛实验报告.html",type:.html)

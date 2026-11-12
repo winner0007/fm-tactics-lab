@@ -44,7 +44,8 @@ public enum BatchExport {
                 body+=table(["位置号","球员","生成档次","相关属性均值","有球角色","无球角色"],rows)
                 body+="<details><summary>球队指令与测试条件</summary>"
                 for v in t.instructions {let g=NativeCatalog.teamInstructions.first{$0.id==v.group}!;body+="<p>"+escape(g.label+"："+(g.options.first{$0.id==v.value}?.label ?? "—"))+"</p>"}
-                for n in t.notes {body+="<p>"+escape(n)+"</p>"};body+="</details>"
+                for n in t.executionNotes {body+="<p>"+escape(n)+"</p>"};body+="</details>"
+                body+="<p>战术来源："+escape(t.preparationSource ?? "指定战术 · 工作台配置")+"</p>"
                 for (title,lines) in [("个人指令覆盖（其余遵循角色）",t.playerInstructionLines),("定位球与队长",t.setPieceLines),("开赛状态与 CA",t.conditionLines)] {
                     body+="<details><summary>"+title+"</summary>"+lines.map{"<p>"+escape($0)+"</p>"}.joined()+"</details>"
                 }

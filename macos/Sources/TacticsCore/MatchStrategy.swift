@@ -84,7 +84,7 @@ public struct NativeTacticInput:Codable,Equatable {
     public let formation:String
     public let defendingFormation:String
     public let instructions:[NativeInstructionInput]
-    public let phases:[[NativeCellInput]]
+    public var phases:[[NativeCellInput]]
     public let extraTeamBits:String?
     public init(_ team:NativeTeamInput) {
         name=team.name;mentality=team.mentality;formation=team.formation;defendingFormation=team.defendingFormation
@@ -108,7 +108,7 @@ public struct NativeMatchStrategy:Codable,Equatable {
     public let kickoffSlot:Int
     public let cooldownMinutes:Int
     public let returnToKickoff:Bool
-    public let plans:[NativeTacticInput]
+    public var plans:[NativeTacticInput]
     public let rules:[NativeStrategyRule]
     public init(workspace:Workspace,opponent:Workspace)throws {
         let strategy=workspace.matchStrategy!;try strategy.validate()

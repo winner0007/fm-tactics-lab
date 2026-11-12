@@ -10,6 +10,8 @@ extension LabStore {
         // A game FMF exchanges the visible plan, not the experiment's kickoff
         // plan or automatic switching rules.
         value.matchStrategy?.enabled=false;value.opponent?.matchStrategy?.enabled=false
+        value.management.selection = .fixed
+        if var opponent=value.opponent?.workspace {opponent.management.selection = .fixed;value.opponent=OpponentPlan(opponent)}
         return value
     }
     private func tacticFileTools()throws->(URL,URL) {
@@ -39,6 +41,7 @@ extension LabStore {
                         let teamName=w.tactic.name;w.tactic=value.tactic
                         if let slot=w.matchStrategy?.editingSlot {w.matchStrategy!.planNames[slot]=value.tactic.name;w.tactic.name=teamName}
                         w.management.tacticSource="FMF 导入 · "+source.lastPathComponent
+                        w.management.selection = .fixed
                     };page="战术工作台";workbenchStep="阵型与首发"
                     message="已导入 FMF：\(value.tactic.name) · 球员与定位球已保留 · ⌘Z 撤销"
                 } catch {self.error=error.localizedDescription}

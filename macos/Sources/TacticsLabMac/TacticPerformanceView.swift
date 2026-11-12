@@ -10,12 +10,12 @@ struct TacticPerformanceView:View {
     @State private var venue:MatchVenue = .all
     @State private var allSeasons=false
     @State private var metric:TacticalMetric = .goals
-    private var teamID:UUID? {selected ?? run.setup.teams.first?.id}
+    private var teamID:UUID? {selected ?? run.testTeam?.id ?? run.setup.teams.first?.id}
     private var rows:[TacticPerformance] {teamID.map{TacticPerformance.aggregate(run:run,teamID:$0,season:allSeasons ? nil:season,grouping:grouping,venue:venue)} ?? []}
     var body:some View {
         let data=rows
         Card {
-            Text("面对不同战术的表现").font(.system(size:17,weight:.semibold))
+            HStack {Text("面对不同战术的表现").font(.system(size:17,weight:.semibold));if teamID==run.testTeam?.id,teamID != nil {TestTeamBadge()}}
             filters
             Text("完整战术按本场保存的阵型、角色、指令、盯防、定位球和临场策略分组。己方战术不同会另列；球队名称和球员能力不会决定分组。").font(.system(size:11)).foregroundStyle(Theme.muted)
             if data.isEmpty {Text("这支球队尚无符合筛选条件的完赛记录。").foregroundStyle(Theme.muted)}
@@ -41,7 +41,7 @@ struct TacticPerformanceView:View {
                 Text("场均按有数据的完赛记录计算；成功率按总量相除。射门转化率不含对方乌龙球；缺失统计显示 —。完整指标可在导出报告中查看。").font(.system(size:11)).foregroundStyle(Theme.muted)
                 Text("这是已完成比赛的分组结果，不代表战术克制结论。先比较样本数、主客场与对手强度；需要更稳定的比较时，增加重复赛季。CA 为开赛首发平均当前能力，范围 0–200。").font(.system(size:11)).foregroundStyle(Theme.muted)
             }
-        }.onChange(of:run.id){_,_ in selected=nil}
+        }.onChange(of:run.id){_,_ in selected=nil}.onChange(of:run.testTeam?.id){_,_ in selected=nil}
     }
     private var filters:some View {
             HStack {

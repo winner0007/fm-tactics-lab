@@ -2,6 +2,8 @@ import Foundation
 
 /// Experiment controls travel with the team, including presets and run snapshots.
 public struct TeamManagement: Codable, Equatable {
+    public var selection:TacticSelection? = nil
+    public var tacticSeed:UInt32? = nil
     public var coach: CoachProfile? = nil
     public var coachLocked = false
     public var tacticLocked = false
@@ -10,6 +12,8 @@ public struct TeamManagement: Codable, Equatable {
 }
 
 public struct CoachProfile: Codable, Equatable, Identifiable {
+    public var parameters:[Int]? = nil
+    public var formationCodes:[Int]? = nil
     public var id: String
     public var name: String
     public var source: String

@@ -7,6 +7,7 @@ public struct SimulationBatch:Codable,Equatable {
     public var requested:Int
     public var completed=0
     public var firstSeed:UInt32
+    public var preparation:PreparedTactics? = nil
     public var configuration:NativeScenario?
     public var status="运行中"
     public var failure:String?

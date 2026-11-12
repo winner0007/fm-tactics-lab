@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 public enum LeagueRankingRule:String,Codable,CaseIterable,Identifiable {
     case goalDifference="积分 → 净胜球 → 进球"
@@ -51,12 +52,16 @@ public struct LeagueSetup:Codable,Equatable {
     public var name="自定义联赛"
     public var rules=LeagueRules()
     public var teams:[LeagueTeam]=[]
+    /// Presentation identity; independent of the team currently being edited.
+    public var testTeamID:UUID? = nil
+    public var defaultTactics:TacticSelection? = nil
     public var importedSchedule:[LeagueFixture]? = nil
     public var source="自定义球队与阵容"
-    public init() {}
+    public init() {defaultTactics = .originalAI}
     public func validated() throws -> Self {
         guard schemaVersion==1,!name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty,(2...40).contains(teams.count),Set(teams.map(\.id)).count==teams.count,Set(teams.map(\.name)).count==teams.count else {throw LabError("联赛需要 2–40 支名称不同的球队。")}
         try rules.validate(teamCount:teams.count)
+        guard testTeamID.map({id in teams.contains{$0.id==id}}) ?? true else{throw LabError("我的测试球队不在参赛名单中。")}
         for t in teams {guard !t.name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty,t.name.count<=80 else {throw LabError("请填写参赛球队名称。")};_ = try t.plan.validated(includeOpponent:false)}
         let schedule=fixtures(),members=Set(teams.map(\.id))
         guard Set(schedule.map(\.id)).count==schedule.count,schedule.allSatisfy({$0.home != $0.away && members.contains($0.home) && members.contains($0.away)}) else {throw LabError("赛程存在重复比赛或无效球队。")}
@@ -87,7 +92,12 @@ public struct LeagueSetup:Codable,Equatable {
     }
     public func scenario(_ fixture:LeagueFixture)throws->NativeScenario {
         guard let home=teams.first(where:{$0.id==fixture.home}),let away=teams.first(where:{$0.id==fixture.away}) else {throw LabError("赛程球队不存在。")}
-        var w=home.plan,opponent=away.plan;w.tactic.name=home.name;opponent.tactic.name=away.name;w.opponent=OpponentPlan(opponent)
+        var w=home.plan,opponent=away.plan;
+        if w.management.selection==nil {w.management.selection=home.id==testTeamID ? .fixed:defaultTactics ?? .fixed}
+        if opponent.management.selection==nil {opponent.management.selection=away.id==testTeamID ? .fixed:defaultTactics ?? .fixed}
+        if w.management.tacticSeed==nil {w.management.tacticSeed=SHA256.hash(data:Data(home.id.uuidString.utf8)).prefix(4).reduce(UInt32(0)){($0<<8)|UInt32($1)}}
+        if opponent.management.tacticSeed==nil {opponent.management.tacticSeed=SHA256.hash(data:Data(away.id.uuidString.utf8)).prefix(4).reduce(UInt32(0)){($0<<8)|UInt32($1)}}
+        w.tactic.name=home.name;opponent.tactic.name=away.name;w.opponent=OpponentPlan(opponent)
         return try NativeScenario(workspace:w)
     }
 }
@@ -110,12 +120,23 @@ public struct LeagueRun:Codable,Equatable,Identifiable {
     public var failure:String? = nil
     public var engineSHA256:String? = nil
     public var workers:Int? = nil
+    /// Report-only selection can be changed without modifying the frozen input.
+    public var preparedTactics:[UUID:PreparedTactics]? = nil
+    public var reportTeamID:UUID? = nil
+    public var testTeam:LeagueTeam? {setup.teams.first{$0.id==(reportTeamID ?? setup.testTeamID)}}
     public var expected:Int {schedule.count*seasons}
     public init(setup:LeagueSetup,seasons:Int,seed:UInt32)throws {
         self.setup=try setup.validated();self.schedule=setup.fixtures();self.seasons=seasons;self.firstSeed=seed;startedAt=Date()
+        reportTeamID=setup.testTeamID
         guard (1...100).contains(seasons),expected<=20000,UInt64(seed)+UInt64(expected-1)<=UInt64(UInt32.max) else {throw LabError("最多 100 次赛季、共 20,000 场，且不能超出种子范围。")}
         // Preflight every pairing so invalid opposition targets cannot fail late.
         for fixture in schedule {_ = try setup.scenario(fixture)}
+    }
+    public func scenario(_ fixture:LeagueFixture)throws->NativeScenario {
+        let requested=try setup.scenario(fixture)
+        guard let prepared=preparedTactics?[fixture.id] else{return requested}
+        guard prepared.requested==requested,prepared.engineSHA256==engineSHA256 else {throw LabError("AI 战术快照与联赛输入或引擎不一致。")}
+        return try prepared.resolved
     }
     public func table(season:Int)->[LeagueStanding] {LeagueTable.calculate(teams:setup.teams,rules:setup.rules,results:results.filter{$0.season==season},complete:results.filter{$0.season==season}.count==schedule.count)}
     public var completedSeasons:[Int] {(1...seasons).filter{s in results.filter{$0.season==s}.count==schedule.count}}
@@ -128,17 +149,22 @@ public struct LeagueRun:Codable,Equatable,Identifiable {
     public func validated()throws->Self {
         if let hash=engineSHA256 ?? results.first?.report.engineSHA256 {try validateEngine(hash)}
         _ = try setup.validated()
+        guard reportTeamID.map({id in setup.teams.contains{$0.id==id}}) ?? true else{throw LabError("报告标记的球队不在本次实验中。")}
         var actual=setup;actual.importedSchedule=schedule;_ = try actual.validated()
         guard (1...100).contains(seasons),expected<=20000,results.count<=expected,UInt64(firstSeed)+UInt64(expected-1)<=UInt64(UInt32.max),status != "已完成" || results.count==expected else {throw LabError("保存的联赛进度无效。")}
         if let imported=setup.importedSchedule {guard imported==schedule else {throw LabError("保存赛程与导入赛程不一致。")}}
         var configurations:[UUID:NativeScenario]=[:]
+        for (id,prepared) in preparedTactics ?? [:] {
+            guard let index=schedule.firstIndex(where:{$0.id==id}),prepared.receipt.seed==firstSeed+UInt32(index),prepared.requested.teams.contains(where:{$0.generation != nil}) else {throw LabError("AI 战术快照不属于本次赛程。")}
+            configurations[id]=try scenario(schedule[index])
+        }
         _ = try SimulationConcurrency.missing(requested:expected,firstSeed:firstSeed,seeds:results.map{$0.report.seed})
         for result in results {
             let i=Int(result.report.seed-firstSeed)
             let fixture=schedule[i%schedule.count]
             guard result.season==i/schedule.count+1,result.fixture==fixture,result.report.seed==firstSeed+UInt32(i) else {throw LabError("联赛报告的轮次、种子或顺序不一致。")}
-            if configurations[fixture.id]==nil {configurations[fixture.id]=try setup.scenario(fixture)}
-            guard result.report.configuration==configurations[fixture.id] else {throw LabError("联赛报告的球队配置与实验快照不一致。")}
+            if configurations[fixture.id]==nil {configurations[fixture.id]=try scenario(fixture)}
+            guard result.report.configuration==configurations[fixture.id],configurations[fixture.id]!.teams.allSatisfy({$0.generation==nil}) else {throw LabError("联赛报告的球队配置与实验快照不一致。")}
             _ = try OriginalMatchReport.experiment([result.report]).validated()
         }
         var sorted=self;sorted.results.sort{$0.report.seed<$1.report.seed};return sorted

@@ -16,7 +16,7 @@ import TacticsCore
                 try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
                 store.readCareerSave(URL(fileURLWithPath:args[s+1]))
                 for _ in 0..<3200 {if !store.readingSave{break};try await Task.sleep(nanoseconds:100_000_000)}
-                guard store.error==nil,let catalog=store.saveCatalog,let own=catalog.managedClubIDs.first else {throw LabError(store.error ?? "目录读取未完成")}
+                guard store.error==nil,let catalog=store.saveCatalog,let own=catalog.managedClubIDs.first ?? (catalog.sourceKind=="database" ? 602:nil) else {throw LabError(store.error ?? "目录读取未完成")}
                 store.importSavedClubs([own],toWorkbench:true)
                 for _ in 0..<3200 {if !store.readingSave{break};try await Task.sleep(nanoseconds:100_000_000)}
                 guard store.error==nil,store.editing.players.allSatisfy({$0.nativeAttributes != nil}) else {throw LabError(store.error ?? "球员读取未完成")}

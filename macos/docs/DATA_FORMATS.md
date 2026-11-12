@@ -31,6 +31,12 @@
 | `original-matches.json`、`latest-batch.json`、`latest-league.json` | 最近查看的比赛和实验索引 |
 | `save-imports/` | 从用户存档读取的球队目录与阵容 |
 
+0.8 的 `TeamManagement.selection` 保存固定／随机／原版 AI，`tacticSeed` 保存随机战术种子；球员随机与战术随机各自独立。`LeagueSetup.defaultTactics` 是未覆盖对手的默认值，旧文件缺省仍为固定战术。`testTeamID` 记录待测球队；报告的 `reportTeamID` 只改变高亮，不修改冻结的设置。
+
+AI 生成记录位于普通批次的 `tactics/` 或联赛的 `tactics/<赛程 ID>/`：`requested.json` 是请求，`generation.jsonl` 是原版回读，`resolved.json` 是实际比赛输入，`preparation.json` 绑定请求、回执和引擎指纹。批次 `preparation` 与联赛 `preparedTactics` 同时保存这些数据；续跑核对配置、种子、球员身份和引擎，不能拿新的编辑结果替换旧快照。AI 准备中停止也保留输入，已完成的生成结果不会重复生成。
+
+`save-imports/` 也保存 DAT 目录和阵容输出。DAT 来源指纹由四个组件名称及各自文件 SHA-256 组合得到；读取选队时重新核对。输出球员的 `databaseRaw` 保留初始化前的值，`initializedFields` 记录补全数量；后续工作台保存的是已导入数值。数据库源文件不修改，也不复制进发布包。
+
 逐场结果先写入，再更新汇总。并行比赛可能乱序完成，目录序号和种子仍对应固定对阵；恢复时扫描所有已完成场次，续跑只补缺失项，不假设结果连续。停止会取消当前批次拥有的子进程，已自然完赛且校验通过的结果仍保留。文件采用原子写入，未完赛比赛不计入统计。报告页的“打开保存位置”可找到整个联赛实验。
 
 方案格式为 `tactics-lab-mac/5`，兼容读入 1–4，升级前留备份。新增可选 `matchStrategy`，保存三套方案、名称、当前编辑／开场方案、冷却间隔和规则。旧版指令草稿和定位球需核对后改用原版设置。新版文件不能交给旧版应用编辑。

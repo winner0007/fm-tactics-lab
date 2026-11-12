@@ -23,7 +23,12 @@ func XCTAssertThrowsError<T>(_ expression: @autoclosure () throws -> T, _ messag
         let files=TacticFileTests()
         let management=ManagementAnalysisTests()
         let strategy=StrategyTests()
+        let selection=TacticSelectionTests()
         let tests: [(String,() throws -> Void)] = [
+            ("AI modes, locks and legacy league",selection.testModesLocksAndLegacyLeague),
+            ("Random tactics and copying preserve personnel",selection.testRandomAndCopyPreservePersonnelAndConditions),
+            ("AI generation rejects identity and input tampering",selection.testGenerationReceiptRejectsIdentityAndInputTampering),
+            ("Report focus preserves frozen setup and HTML escaping",selection.testReportFocusNeverChangesFrozenSetup),
             ("Three plans share lineup and conditions, persist and respect locks",strategy.testPlanEditingSharesPlayersButKeepsTactics),
             ("Score rule priority, boundaries and invalid strategies",strategy.testRulesPriorityBoundariesAndValidation),
             ("Parallel recovery holes, duplicates and seed overflow",strategy.testMissingSeedsAllowHolesButRejectDuplicates),

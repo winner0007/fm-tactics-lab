@@ -14,6 +14,23 @@ import TacticsCore
         window.title="战术效果 · 布局验证";window.orderFront(nil)
         for width in [1024,1440] {
             window.setContentSize(NSSize(width:width,height:760))
+            if let i=CommandLine.arguments.firstIndex(of:"--dat-catalog"),CommandLine.arguments.count>i+1 {
+                store.saveCatalog=try JSONDecoder().decode(SaveCatalog.self,from:Data(contentsOf:URL(fileURLWithPath:CommandLine.arguments[i+1]))).validated()
+            }
+            var previews:[(String,AnyView)]=[("tactic-configuration",AnyView(OriginalSimulationCard())),("real-team-import",AnyView(SaveImportPanel()))]
+            store.leagueSection="球队与规则"
+            previews.append(("league-configuration",AnyView(LeagueView().frame(height:700))))
+            if var run=store.leagueRun {
+                run.reportTeamID=run.setup.teams.first!.id
+                previews += [("league-focus",AnyView(LeagueReportView(run:run))),("player-focus",AnyView(LeaguePlayerTable(run:run,season:1)))]
+                try Data(LeagueExport.html(run).utf8).write(to:folder.appendingPathComponent("highlight-report.html"))
+            }
+            for (name,content) in previews {
+                window.contentView=NSHostingView(rootView:ScrollView{content.padding(24)}.background(Theme.paper).environmentObject(store).preferredColorScheme(.light))
+                try await Task.sleep(nanoseconds:250_000_000)
+                let view=window.contentView!;view.layoutSubtreeIfNeeded();let rep=view.bitmapImageRepForCachingDisplay(in:view.bounds)!
+                view.cacheDisplay(in:view.bounds,to:rep);try rep.representation(using:.png,properties:[:])!.write(to:folder.appendingPathComponent("\(name)-\(width).png"))
+            }
             for (i,section) in ["战术统计","进攻与机会","进球分布","进球时间与方式","临场切换","逐场复盘"].enumerated() {
                 window.contentView=NSHostingView(rootView:ScrollView{TacticalImpactView(reports:store.originalReports,section:section).padding(24)}.background(Theme.paper).environmentObject(store).preferredColorScheme(.light))
                 try await Task.sleep(nanoseconds:250_000_000)
