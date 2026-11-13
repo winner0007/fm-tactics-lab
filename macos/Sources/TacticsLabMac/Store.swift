@@ -45,6 +45,7 @@ import TacticsCore
     @Published var leagueSeasons=1
     @Published var leagueSeed="1"
     @Published var leagueRunning=false
+    @Published var leaguePreparing=false
     @Published var leagueProgress=""
     @Published var leagueEditingTeam:UUID?
     @Published var saveCatalog:SaveCatalog?
@@ -67,6 +68,10 @@ import TacticsCore
     private var leagueHistory:[UUID:[Workspace]]=[:]
     private var leagueFuture:[UUID:[Workspace]]=[:]
     private var writable = true
+    @Published var experimentStorage:URL
+    @Published var managingHistory=false
+    @Published var historyEntries:[HistoryEntry]=[]
+    var historyScanID=UUID()
     let storage: URL
     let preview: Bool
 
@@ -77,6 +82,8 @@ import TacticsCore
         } else {
             storage = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("FM Tactics Lab Mac")
         }
+        let preference=storage.appendingPathComponent("experiment-location.json")
+        experimentStorage=(try? Data(contentsOf:preference)).flatMap{try? JSONDecoder().decode(String.self,from:$0)}.map{URL(fileURLWithPath:$0)} ?? storage
         workspace=(try? workspace.validated()) ?? workspace
         if preview { searchEngine(); return }
         if let data=try? Data(contentsOf:storage.appendingPathComponent("simulation-workers.json")),let count=try? JSONDecoder().decode(Int.self,from:data),(1...256).contains(count) {simulationWorkers=count}
@@ -93,17 +100,21 @@ import TacticsCore
             }
             catch { self.error = "本机方案读取失败，原文件已保留。请导入备份或另存方案。\n\(error.localizedDescription)"; writable = false }
         }
-        if let data = try? Data(contentsOf: storage.appendingPathComponent("experiment.csv")), let csv = String(data: data, encoding: .utf8), let e = try? Experiment.load(csv, source: "上次导入的实验") { setExperiment(e) }
-        if let data=try? Data(contentsOf:storage.appendingPathComponent("experiment.json")),let value=try? JSONDecoder().decode(Experiment.self,from:data).validated() {setExperiment(value)}
+        if let data = try? Data(contentsOf: experimentStorage.appendingPathComponent("experiment.csv")), let csv = String(data: data, encoding: .utf8), let e = try? Experiment.load(csv, source: "上次导入的实验") { setExperiment(e) }
+        if let data=try? Data(contentsOf:experimentStorage.appendingPathComponent("experiment.json")),let value=try? JSONDecoder().decode(Experiment.self,from:data).validated() {setExperiment(value)}
         refreshArchives()
-        if let data=try? Data(contentsOf:storage.appendingPathComponent("latest-batch.json")) {batch=try? JSONDecoder().decode(SimulationBatch.self,from:data)}
-        if let data=try? Data(contentsOf:storage.appendingPathComponent("original-matches.json")),let reports=try? JSONDecoder().decode([OriginalMatchReport].self,from:data),!reports.isEmpty,
+        if let data=try? Data(contentsOf:experimentStorage.appendingPathComponent("latest-batch.json")) {batch=try? JSONDecoder().decode(SimulationBatch.self,from:data)}
+        if let data=try? Data(contentsOf:experimentStorage.appendingPathComponent("original-matches.json")),let reports=try? JSONDecoder().decode([OriginalMatchReport].self,from:data),!reports.isEmpty,
            reports.allSatisfy({OriginalMatchReport.supportsEngine($0.engineSHA256)}),
            (try? OriginalMatchReport.experiment(reports).validated()) != nil {
             originalReports=reports;originalMatch=reports.last
-            let logs=storage.appendingPathComponent("engine-runs")
+            let logs=experimentStorage.appendingPathComponent("engine-runs")
             if FileManager.default.fileExists(atPath:logs.path) {originalLogFolder=logs}
             if let id=batch?.id {let folder=logs.appendingPathComponent(id.uuidString);if FileManager.default.fileExists(atPath:folder.appendingPathComponent("batch.json").path) {originalLogFolder=folder}}
+        }
+        if let id=batch?.id {
+            let folder=experimentStorage.appendingPathComponent("engine-runs").appendingPathComponent(id.uuidString)
+            if FileManager.default.fileExists(atPath:folder.appendingPathComponent("batch.json").path) {originalLogFolder=folder}
         }
         loadLeagueStorage()
         refreshTeamPresets()
@@ -253,41 +264,44 @@ import TacticsCore
         experiment = value; baselineVariant = value.variants.first ?? ""; candidateVariant = value.variants.dropFirst().first ?? ""
     }
     func importExperiment() {
+        guard !engineLocationBusy,requireExperimentStorage() else{return}
         guard let url = choose(types:[.commaSeparatedText,.plainText,.json],message:"导入完整实验 JSON 或逐场 CSV。当前结果会存为历史批次，兼容原项目的中文表头。") else { return }
         do {
             let data = try read(url)
             guard let text = String(data:data,encoding:.utf8) else { throw LabError("请使用 UTF-8 编码的 CSV。") }
             let e = try url.pathExtension.lowercased()=="json" ? JSONDecoder().decode(Experiment.self,from:data).validated() : Experiment.load(text,source:url.lastPathComponent)
             try FileManager.default.createDirectory(at: storage,withIntermediateDirectories:true)
-            try Data(e.teamCSV.utf8).write(to:storage.appendingPathComponent("experiment.csv"),options:.atomic)
+            try Data(e.teamCSV.utf8).write(to:experimentStorage.appendingPathComponent("experiment.csv"),options:.atomic)
             try archiveExperiment(e);clearOriginalSelection();setExperiment(e); page = "实验对比"
         } catch { self.error = error.localizedDescription }
     }
     func refreshArchives() {
-        let folder=storage.appendingPathComponent("experiments")
+        let folder=experimentStorage.appendingPathComponent("experiments")
         experimentArchives=((try? FileManager.default.contentsOfDirectory(at:folder,includingPropertiesForKeys:nil)) ?? []).filter{$0.pathExtension=="json"}.sorted{$0.lastPathComponent>$1.lastPathComponent}
-        let runs=storage.appendingPathComponent("engine-runs")
+        let runs=experimentStorage.appendingPathComponent("engine-runs")
         nativeBatchArchives=((try? FileManager.default.contentsOfDirectory(at:runs,includingPropertiesForKeys:[.contentModificationDateKey])) ?? []).filter{FileManager.default.fileExists(atPath:$0.appendingPathComponent("batch.json").path)}.sorted{((try? $0.resourceValues(forKeys:[.contentModificationDateKey]).contentModificationDate) ?? .distantPast)>((try? $1.resourceValues(forKeys:[.contentModificationDateKey]).contentModificationDate) ?? .distantPast)}
     }
     func archiveExperiment(_ value:Experiment) throws {
         guard !preview else {return}
-        let folder=storage.appendingPathComponent("experiments")
+        guard requireExperimentStorage() else{throw LabError("测试数据目录不可用。") }
+        let folder=experimentStorage.appendingPathComponent("experiments")
         try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
         let data=try JSONEncoder().encode(value)
         let date=ISO8601DateFormatter().string(from:Date()).replacingOccurrences(of:":",with:"-")
         try data.write(to:folder.appendingPathComponent(date+"-"+UUID().uuidString.prefix(8)+".json"),options:.atomic)
-        try data.write(to:storage.appendingPathComponent("experiment.json"),options:.atomic)
+        try data.write(to:experimentStorage.appendingPathComponent("experiment.json"),options:.atomic)
         refreshArchives()
     }
     func loadArchive(_ url:URL) {
-        do {let e=try JSONDecoder().decode(Experiment.self,from:read(url)).validated();clearOriginalSelection();setExperiment(e);if !preview {try JSONEncoder().encode(e).write(to:storage.appendingPathComponent("experiment.json"),options:.atomic)}} catch {self.error=error.localizedDescription}
+        guard !engineLocationBusy,requireExperimentStorage() else{return}
+        do {let e=try JSONDecoder().decode(Experiment.self,from:read(url)).validated();clearOriginalSelection();setExperiment(e);if !preview {try JSONEncoder().encode(e).write(to:experimentStorage.appendingPathComponent("experiment.json"),options:.atomic)}} catch {self.error=error.localizedDescription}
     }
     func clearOriginalSelection() {
         originalReports=[];originalMatch=nil;batch=nil
-        if !preview {try? Data("[]".utf8).write(to:storage.appendingPathComponent("original-matches.json"),options:.atomic);try? Data("null".utf8).write(to:storage.appendingPathComponent("latest-batch.json"),options:.atomic)}
+        if !preview {try? Data("[]".utf8).write(to:experimentStorage.appendingPathComponent("original-matches.json"),options:.atomic);try? Data("null".utf8).write(to:experimentStorage.appendingPathComponent("latest-batch.json"),options:.atomic)}
     }
     func loadNativeBatch(_ folder:URL) {
-        guard !runningOriginal else{return}
+        guard !engineLocationBusy,requireExperimentStorage() else{return}
         do {
             var meta=try JSONDecoder().decode(SimulationBatch.self,from:read(folder.appendingPathComponent("batch.json")))
             let files=try FileManager.default.contentsOfDirectory(at:folder,includingPropertiesForKeys:nil).filter{$0.lastPathComponent.hasPrefix("match-") && $0.pathExtension=="json"}
@@ -300,12 +314,13 @@ import TacticsCore
             meta.completed=reports.count
             let e=reports.isEmpty ? nil:try OriginalMatchReport.experiment(reports)
             originalReports=reports;originalMatch=reports.last;batch=meta;originalLogFolder=folder;if let e {setExperiment(e)}else{experiment=nil};resultSection="测试报告";page="实验对比"
-            try JSONEncoder().encode(reports).write(to:storage.appendingPathComponent("original-matches.json"),options:.atomic)
-            try JSONEncoder().encode(meta).write(to:storage.appendingPathComponent("latest-batch.json"),options:.atomic)
-            if let e {try JSONEncoder().encode(e).write(to:storage.appendingPathComponent("experiment.json"),options:.atomic)}
+            try JSONEncoder().encode(reports).write(to:experimentStorage.appendingPathComponent("original-matches.json"),options:.atomic)
+            try JSONEncoder().encode(meta).write(to:experimentStorage.appendingPathComponent("latest-batch.json"),options:.atomic)
+            if let e {try JSONEncoder().encode(e).write(to:experimentStorage.appendingPathComponent("experiment.json"),options:.atomic)}
         } catch {self.error=error.localizedDescription}
     }
     func importPlayerResults() {
+        guard !engineLocationBusy,requireExperimentStorage() else{return}
         guard var e=experiment else {error="请先导入对应批次的球队比赛结果。";return}
         guard let url=choose(types:[.commaSeparatedText,.plainText],message:"导入同批次的球员逐场统计 CSV。按方案、种子、对手、场地与球员 ID 关联。") else {return}
         do {
@@ -333,6 +348,7 @@ import TacticsCore
     func runOriginalMatches() {startOriginalBatch(resume:false)}
     func resumeOriginalMatches() {startOriginalBatch(resume:true)}
     private func startOriginalBatch(resume:Bool) {
+        guard requireExperimentStorage() else{return}
         guard engine.adapterSupported else {error=engine.compatibilityMessage;return}
         guard editedLeagueTeam==nil else {error="当前正在编辑联赛球队。请返回联赛运行，或切换到普通对战后测试。";return}
         guard !engineLocationBusy,let path=engine.appPath,engine.filesReady else {return}
@@ -347,7 +363,7 @@ import TacticsCore
             indices=try SimulationConcurrency.missing(requested:count,firstSeed:seed,seeds:existing.map(\.seed))
             if resume {guard let meta=batch,meta.engineSHA256.map({$0==expectedEngine}) ?? true,existing.allSatisfy({$0.engineSHA256==expectedEngine && $0.configuration==scenario}),let folder=originalLogFolder,FileManager.default.fileExists(atPath:folder.appendingPathComponent("batch.json").path) else {throw LabError("无法使用当前引擎续跑此批次，请打开对应历史批次或新建实验。")}}
         } catch {self.error=error.localizedDescription;return}
-        let folder=resume ? originalLogFolder!:storage.appendingPathComponent("engine-runs").appendingPathComponent(UUID().uuidString)
+        let folder=resume ? originalLogFolder!:experimentStorage.appendingPathComponent("engine-runs").appendingPathComponent(UUID().uuidString)
         if !resume {clearOriginalSelection();experiment=nil;batch=SimulationBatch(requested:count,firstSeed:seed,configuration:scenario);batch?.id=UUID(uuidString:folder.lastPathComponent)!}
         originalLogFolder=folder;runningOriginal=true;originalCancelled=false
         let workers=simulationWorkers,queue=MatchQueue();originalQueue=queue
@@ -369,7 +385,7 @@ import TacticsCore
             } catch {
                 if !originalCancelled {self.error=error.localizedDescription}
                 batch?.failure=originalCancelled ? nil:error.localizedDescription;batch?.status=originalCancelled ? "已停止":"未完成";batch?.finishedAt=Date()
-                do {try JSONEncoder().encode(batch).write(to:folder.appendingPathComponent("batch.json"),options:.atomic);try JSONEncoder().encode(batch).write(to:storage.appendingPathComponent("latest-batch.json"),options:.atomic)}catch{self.error=error.localizedDescription}
+                do {try JSONEncoder().encode(batch).write(to:folder.appendingPathComponent("batch.json"),options:.atomic);try JSONEncoder().encode(batch).write(to:experimentStorage.appendingPathComponent("latest-batch.json"),options:.atomic)}catch{self.error=error.localizedDescription}
                 tacticGenerationJob=nil;originalQueue=nil;runningOriginal=false;originalProgress="战术准备已停止，输入已保留，可继续";refreshArchives();return
             }
             tacticGenerationJob=nil
@@ -394,10 +410,10 @@ import TacticsCore
             batch?.status=completed.count==count ? "已完成":originalCancelled ? "已停止":"未完成"
             batch?.finishedAt=Date()
             if let batch {
-                do {try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true);try JSONEncoder().encode(batch).write(to:folder.appendingPathComponent("batch.json"),options:.atomic);try JSONEncoder().encode(batch).write(to:storage.appendingPathComponent("latest-batch.json"),options:.atomic)} catch {self.error=error.localizedDescription}
+                do {try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true);try JSONEncoder().encode(batch).write(to:folder.appendingPathComponent("batch.json"),options:.atomic);try JSONEncoder().encode(batch).write(to:experimentStorage.appendingPathComponent("latest-batch.json"),options:.atomic)} catch {self.error=error.localizedDescription}
             }
             if !completed.isEmpty {
-                do {let e=try OriginalMatchReport.experiment(completed);setExperiment(e);try archiveExperiment(e);try JSONEncoder().encode(completed).write(to:storage.appendingPathComponent("original-matches.json"),options:.atomic);resultSection="测试报告";page="实验对比"} catch {self.error=error.localizedDescription}
+                do {let e=try OriginalMatchReport.experiment(completed);setExperiment(e);try JSONEncoder().encode(e).write(to:experimentStorage.appendingPathComponent("experiment.json"),options:.atomic);try JSONEncoder().encode(completed).write(to:experimentStorage.appendingPathComponent("original-matches.json"),options:.atomic);resultSection="测试报告";page="实验对比"} catch {self.error=error.localizedDescription}
             }
             originalProgress="本批次完成 \(completed.count) / \(count) 场"
             refreshArchives()
@@ -412,7 +428,7 @@ import TacticsCore
         do {export(Data(try BatchExport.html(matches:originalReports,batch:batch).utf8),name:"战术测试报告.html",type:.html)} catch {self.error=error.localizedDescription}
     }
     func revealOriginalLogs() {if let folder=originalLogFolder {NSWorkspace.shared.activateFileViewerSelecting([folder])}}
-    var engineLocationBusy:Bool {engineSearching || runningOriginal || leagueRunning || checkingNative || processingTactic || readingSave}
+    var engineLocationBusy:Bool {managingHistory || engineSearching || runningOriginal || leagueRunning || checkingNative || processingTactic || readingSave}
     func chooseGame() {
         guard !engineLocationBusy else {return}
         let panel=NSOpenPanel(); panel.canChooseFiles=true; panel.canChooseDirectories=true

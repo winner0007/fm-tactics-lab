@@ -72,7 +72,7 @@ struct LineupSnapshot:View {
         Card {
             HStack {Text((side==0 ? "本队":"对手")+" · 实际测试阵容").font(.system(size:17,weight:.semibold));Spacer();Text("\(team.players.count) 人 · "+NativeCatalog.mentalities[team.mentality-1]).font(.system(size:12)).foregroundStyle(Theme.muted)}
             Text("有球：\(team.formation)　无球：\(team.defendingFormation)").font(.system(size:12))
-            HStack {Text("球员").frame(width:150,alignment:.leading);Text("生成档次 / 相关均值").frame(width:150,alignment:.leading);Text("有球位置 · 角色").frame(maxWidth:.infinity,alignment:.leading);Text("无球位置 · 角色").frame(maxWidth:.infinity,alignment:.leading)}.font(.system(size:11)).foregroundStyle(Theme.muted)
+            HStack {Text("球员").frame(width:150,alignment:.leading);Text("能力档次 / 相关均值").frame(width:150,alignment:.leading);Text("有球位置 · 角色").frame(maxWidth:.infinity,alignment:.leading);Text("无球位置 · 角色").frame(maxWidth:.infinity,alignment:.leading)}.font(.system(size:11)).foregroundStyle(Theme.muted)
             ForEach(Array(team.players.enumerated()),id:\.element.id) {i,p in
                 HStack {Text("\(i<11 ? String(i+1):"替补")  \(p.name)").frame(width:150,alignment:.leading);Text(p.abilityTier+String(format:" · %.1f",p.attributeMean)).frame(width:150,alignment:.leading);Text(cell(i,0)).frame(maxWidth:.infinity,alignment:.leading);Text(cell(i,1)).frame(maxWidth:.infinity,alignment:.leading)}.font(.system(size:11))
             }

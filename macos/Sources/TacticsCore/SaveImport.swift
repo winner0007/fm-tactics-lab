@@ -42,7 +42,7 @@ public struct SavedRoster:Decodable {
         w.management.coach=coach
         let initialized=players.filter{($0.initializedFields ?? 0)>0}.count
         w.tactic.name=name;w.rosterSource=source+" · 导入球员池 · 阵型为工具初始模板，需核对"+(initialized>0 ? " · \(initialized) 人含 DAT 未设定值，按固定规则补全":"")
-        w.management.tacticSource="工具初始模板 · 未读取存档 AI 战术"
+        w.management.tacticSource="工具初始模板 · 球队原有战术未还原"
         var used=Set<UUID>()
         for i in w.tactic.slots.indices {
             let position=w.tactic.slots[i].position(.possession).id,index=NativeTeamInput.positionAttribute[position]!

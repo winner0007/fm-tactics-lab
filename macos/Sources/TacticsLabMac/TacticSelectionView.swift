@@ -4,6 +4,7 @@ import TacticsCore
 struct TacticSelectionControl:View {
     @Binding var management:TeamManagement
     var inherited:TacticSelection? = nil
+    var showsCoach=true
     var body:some View {
         VStack(alignment:.leading,spacing:5) {
         HStack(spacing:10) {
@@ -18,7 +19,7 @@ struct TacticSelectionControl:View {
                 Button("重新抽取"){management.tacticSeed=UInt32.random(in:0...UInt32.max)}
             }
         }
-        if !management.tacticLocked,(management.selection ?? inherited) == .originalAI {
+        if showsCoach,!management.tacticLocked,(management.selection ?? inherited) == .originalAI {
             Text(management.coach?.parameters == nil ? "使用原版测试教练参数":"教练："+management.coach!.name).font(.caption).foregroundStyle(Theme.muted)
         }
         }
@@ -31,7 +32,7 @@ struct ExperimentTacticsConfiguration:View {
             HStack {
                 Text("双方战术配置").font(.headline);Spacer()
                 Menu("统一设置") {ForEach(TacticSelection.allCases){mode in Button(mode.rawValue){store.setExperimentTactics(mode)}}}
-                Button("复制主队战术给双方"){store.copyTacticsToExperiment()}
+                Button("复制主队战术给对手"){store.copyTacticsToExperiment()}
             }
             ForEach(0..<2,id:\.self){side in
                 let team=side==0 ? store.workspace:store.workspace.opponent!.workspace
@@ -41,7 +42,9 @@ struct ExperimentTacticsConfiguration:View {
                     Spacer();Button("编辑指定战术"){store.editingSide=side;store.page="战术工作台"}
                 }
             }
-            Text("指定战术使用工作台的三个方案与临场规则。随机战术按保存的种子抽取；AI 按本次对手生成赛前方案。同一批比赛固定生成结果，续跑不重新抽取。").font(.caption).foregroundStyle(Theme.muted)
+            DisclosureGroup("三种战术模式如何生效") {
+                Text("指定战术使用工作台的三个方案与临场规则。随机战术按种子抽取；AI 按本次对手生成赛前方案。同一批比赛固定复用，续跑不重新生成。").font(.caption).foregroundStyle(Theme.muted)
+            }
         }.disabled(store.runningOriginal || store.leagueRunning)
     }
 }
@@ -68,10 +71,11 @@ extension LabStore {
     }
     func copyTacticsToLeague() {
         guard !leagueRunning else{return}
+        guard leagueSetup.testTeamID != nil else {error="请先选择“我的测试球队”，再复制给其他对手。";return}
         do {
             var next=leagueSetup
-            for i in next.teams.indices where !next.teams[i].plan.management.tacticLocked {next.teams[i].plan=try next.teams[i].plan.copyingTactics(from:workspace)}
-            leagueSetup=next;saveLeagueSetup();message="已将普通对战主队战术应用到未锁定球队；阵容分别保留"
+            for i in next.teams.indices where next.teams[i].id != next.testTeamID && !next.teams[i].plan.management.tacticLocked {next.teams[i].plan=try next.teams[i].plan.copyingTactics(from:workspace)}
+            leagueSetup=next;saveLeagueSetup();message="已将普通主队战术复制给未锁定的对手；我的球队与各队球员属性保留"
         }catch{self.error=error.localizedDescription}
     }
 }

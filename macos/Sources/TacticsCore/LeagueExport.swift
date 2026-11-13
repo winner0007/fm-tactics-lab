@@ -96,10 +96,10 @@ public enum LeagueExport {
         for team in run.setup.teams {
             body+="<h3>"+escape(marked(team.name,team.id))+"</h3><p>"+escape(team.plan.rosterSource)+"</p>"
             let m=team.plan.management
-            body+="<p>主教练："+escape(m.coach?.name ?? "未指定／未读取")+" · "+(m.coachLocked ? "教练已锁定":"教练未锁定")+" · "+(m.tacticLocked ? "战术已锁定":"战术未锁定")+" · "+escape(m.tacticSource)+"</p>"
+            body+="<p>主教练："+escape(m.coach?.name ?? "未指定／未读取")+" · "+(m.coachLocked ? "教练已锁定":"教练未锁定")+" · "+(m.tacticLocked ? "战术已锁定":"战术未锁定")+" · "+escape("工作台方案来源："+m.workbenchSource)+"</p>"
             if let config=run.results.lazy.compactMap({g in g.fixture.home==team.id ? g.report.configuration?.teams[0]:g.fixture.away==team.id ? g.report.configuration?.teams[1]:nil}).first {
                 body+="<p>有球 "+escape(config.formation)+" / 无球 "+escape(config.defendingFormation)+"</p>"
-                body+=table(["名单","球员","生成档次","相关属性均值","CA"],config.players.enumerated().map{i,p in [i<11 ? "首发 \(i+1)":"候补",p.name,p.abilityTier,String(format:"%.1f",p.attributeMean),String(p.profile["11"] ?? 0)]})
+                body+=table(["名单","球员","能力档次","相关属性均值","CA"],config.players.enumerated().map{i,p in [i<11 ? "首发 \(i+1)":"候补",p.name,p.abilityTier,String(format:"%.1f",p.attributeMean),String(p.profile["11"] ?? 0)]})
                 body+="<p>战术来源："+escape(config.preparationSource ?? "指定战术 · 工作台配置")+"</p>"
                 for (title,lines) in [("开赛状态",config.conditionLines),("个人指令",config.playerInstructionLines),("定位球与队长",config.setPieceLines)] {body+="<details><summary>"+title+"</summary>"+lines.map{"<p>"+escape($0)+"</p>"}.joined()+"</details>"}
             }

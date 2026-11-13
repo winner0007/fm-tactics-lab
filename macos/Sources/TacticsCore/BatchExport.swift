@@ -41,7 +41,7 @@ public enum BatchExport {
                     }
                     return row
                 }
-                body+=table(["位置号","球员","生成档次","相关属性均值","有球角色","无球角色"],rows)
+                body+=table(["位置号","球员","能力档次","相关属性均值","有球角色","无球角色"],rows)
                 body+="<details><summary>球队指令与测试条件</summary>"
                 for v in t.instructions {let g=NativeCatalog.teamInstructions.first{$0.id==v.group}!;body+="<p>"+escape(g.label+"："+(g.options.first{$0.id==v.value}?.label ?? "—"))+"</p>"}
                 for n in t.executionNotes {body+="<p>"+escape(n)+"</p>"};body+="</details>"

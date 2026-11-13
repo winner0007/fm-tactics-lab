@@ -9,6 +9,14 @@ public struct TeamManagement: Codable, Equatable {
     public var tacticLocked = false
     public var tacticSource = "手动设置"
     public init() {}
+    public func selectionDescription(inherited:TacticSelection = .fixed)->String {
+        switch tacticLocked ? TacticSelection.fixed:selection ?? inherited {
+        case .fixed:return "使用工作台方案"+(tacticLocked ? " · 已锁定":"")
+        case .random:return "随机战术 · 按球队种子抽取，实验内固定复用"
+        case .originalAI:return "原版 AI 赛前制定 · "+(coach?.parameters == nil ? "使用测试教练参数":coach!.name)
+        }
+    }
+    public var workbenchSource:String {tacticSource.replacingOccurrences(of:"未读取存档 AI 战术",with:"未还原存档中的现成战术")}
 }
 
 public struct CoachProfile: Codable, Equatable, Identifiable {
@@ -28,6 +36,12 @@ public struct CoachProfile: Codable, Equatable, Identifiable {
 }
 
 extension Workspace {
+    public var abilitySourceDescription:String {
+        let generated=players.filter{$0.abilityPreset != nil}.count
+        if generated>0 {return "自定义能力 · \(generated) / \(players.count) 人使用随机档次"}
+        if players.contains(where:{$0.sourceIdentity != nil}) {return "使用导入的球员属性"+(rosterSource.contains("DAT 未设定值") ? " · 含 DAT 未设定值补全":"")}
+        return "使用当前球员属性"
+    }
     public var management: TeamManagement {
         get {teamManagement ?? TeamManagement()}
         set {teamManagement=newValue}

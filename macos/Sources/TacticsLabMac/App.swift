@@ -9,7 +9,7 @@ import TacticsCore
             RootView().environmentObject(store)
                 .frame(minWidth: 1180, minHeight: 760)
                 .preferredColorScheme(.light)
-                .onAppear { captureIfRequested(); originalEngineSmokeIfRequested(); sheetCaptureIfRequested(); SaveImportSmoke.start(store);FeatureSmoke.replay(store) }
+                .onAppear { captureIfRequested(); originalEngineSmokeIfRequested(); sheetCaptureIfRequested(); SaveImportSmoke.start(store);FeatureSmoke.replay(store);StorageSmoke.start(store) }
         }
         .defaultSize(width: 1440, height: 900)
         .commands {
@@ -350,7 +350,7 @@ struct Chip: View {
 
 struct RootView: View {
     @EnvironmentObject var store: LabStore
-    private let pages = [("战术工作台","sportscourt"),("球员与阵容","person.3"),("实验对比","chart.bar.xaxis"),("联赛实验","trophy"),("引擎与接入","cpu")]
+    private let pages = [("战术工作台","sportscourt"),("球员与阵容","person.3"),("实验对比","chart.bar.xaxis"),("联赛实验","trophy"),("引擎与接入","cpu"),("历史与存储","externaldrive")]
     var body: some View {
         HStack(spacing:0) {
             VStack(alignment:.leading,spacing:0) {
@@ -370,7 +370,7 @@ struct RootView: View {
                     HStack { Circle().fill(Color.orange.opacity(0.8)).frame(width:6,height:6); Text("本地编辑与分析").font(.system(size:12,weight:.medium)) }
                     Text(store.runningOriginal || store.leagueRunning ? "原版比赛计算中" : "原版引擎 · 自定义测试").font(.system(size:11)).foregroundStyle(.white.opacity(0.55))
                     Divider().overlay(.white.opacity(0.1)).padding(.vertical,7)
-                    Text("v0.8.1 · 原生 macOS").font(.system(size:10)).foregroundStyle(.white.opacity(0.4))
+                    Text("v0.8.2 · 原生 macOS").font(.system(size:10)).foregroundStyle(.white.opacity(0.4))
                 }.padding(22)
             }.frame(width:202).foregroundStyle(.white).background(Theme.ink)
             VStack(spacing:0) {
@@ -383,10 +383,11 @@ struct RootView: View {
                     case "实验对比": ExperimentsView()
                     case "联赛实验": LeagueView()
                     case "引擎与接入": EngineView()
+                    case "历史与存储": HistoryView()
                     default: WorkbenchView()
                     }
-                }.frame(maxWidth:.infinity,maxHeight:.infinity).disabled(store.processingTactic)
-                HStack { Circle().fill(Theme.green).frame(width:5,height:5); Text(store.message); Spacer(); Text("⌘Z 撤销   ·   ⇧⌘S 导出方案") }.font(.system(size:10)).foregroundStyle(Theme.muted).padding(.horizontal,24).padding(.vertical,10)
+                }.frame(maxWidth:.infinity,maxHeight:.infinity).disabled(store.processingTactic || store.managingHistory)
+                HStack { Circle().fill(Theme.green).frame(width:5,height:5); Text(store.leagueRunning ? store.leagueProgress:store.runningOriginal ? store.originalProgress:store.message); Spacer(); Text("⌘Z 撤销   ·   ⇧⌘S 导出方案") }.font(.system(size:10)).foregroundStyle(Theme.muted).padding(.horizontal,24).padding(.vertical,10)
             }.background(Theme.paper)
         }.tint(Theme.green).foregroundStyle(Theme.ink)
         .sheet(isPresented:$store.showTeamPresets) { TeamPresetView().environmentObject(store) }
@@ -412,15 +413,16 @@ struct RootView: View {
                     Button("导出完整工具方案 JSON…",action:store.exportWorkspace)
                 }.disabled(store.processingTactic).menuStyle(.borderedButton)
             } else if store.page == "球员与阵容" { Button("导入球员 CSV",action:store.importPlayers).buttonStyle(.borderedProminent) }
-            else if store.page == "实验对比" { Button("导入实验 CSV",action:store.importExperiment).buttonStyle(.borderedProminent) }
+            else if store.page == "实验对比" { Button("导入实验结果…",action:store.importExperiment).buttonStyle(.borderedProminent) }
         }.controlSize(.large).padding(.horizontal,26).padding(.vertical,22)
     }
     private var subtitle: String {
         switch store.page {
         case "球员与阵容": return "把你的球员带进来，让战术适应阵容。"
-        case "实验对比": return "固定条件，成对比较，让每次改动有据可查。"
+        case "实验对比": return "查看测试报告，按战术比较球队和球员表现。"
         case "联赛实验": return "选择球队与规则，运行完整赛程，检查积分与排名。"
-        case "引擎与接入": return "检查本机 FM27，并查看真实比赛计算的接入状态。"
+        case "引擎与接入": return "选择游戏安装，检查比赛引擎是否适配。"
+        case "历史与存储": return "查看和清理测试记录，设置测试数据保存位置。"
         default: return "从一个战术问题开始，每次只改变一个变量。"
         }
     }

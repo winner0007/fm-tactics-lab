@@ -4,7 +4,7 @@
 
 Test tactics on a Mac using your installed FM27 engine. Set up both squads, repeat matches and review team/player results, or import clubs from a career save and run a league season.
 
-This is a fork of [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab). The original project provides the Windows editor and simulation workflow; this fork adds a native Mac interface and engine adapter. Current Mac version: **0.8.1**, based on upstream **v1109.3 / `6cb32bf`**, under the [MIT license](LICENSE).
+This is a fork of [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab). The original project provides the Windows editor and simulation workflow; this fork adds a native Mac interface and engine adapter. Current Mac version: **0.8.2**, based on upstream **v1109.3 / `6cb32bf`**, under the [MIT license](LICENSE).
 
 ## What works
 
@@ -16,6 +16,8 @@ This is a fork of [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics
 - Leagues of 2–40 custom, random or imported teams, with round-robin schedules, ranking rules, season results and repeated-season comparisons.
 
 Ordinary matches and leagues keep separate squads. Adding a workbench team to a league makes a copy. Opening that league team's squad or tactics edits the same saved team. Each experiment stores its starting configuration, so later edits do not change old results.
+
+Version 0.8.2 starts league matches after each preparation batch instead of waiting for every AI fixture. Imported player attributes stay fixed unless explicitly edited; random ability presets are optional. The new history/storage page can recycle test records and migrate verified history to a chosen directory while keeping team presets and editor settings separate.
 
 ## Run on Mac
 
@@ -36,7 +38,7 @@ git clone https://github.com/winner0007/fm-tactics-lab.git
 cd fm-tactics-lab
 bash macos/scripts/check.sh
 bash macos/scripts/build.sh
-open 'macos/dist/FM Tactics Lab 0.8.1.app'
+open 'macos/dist/FM Tactics Lab 0.8.2.app'
 ```
 
 ## Still to do

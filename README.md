@@ -4,7 +4,7 @@
 
 在 Mac 上用本机 FM27 原版引擎测试战术：设置双方阵容，反复比赛，看球队和球员表现；也可以导入存档中的球队，跑完一个联赛，查看成绩与排名。
 
-这是 [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab) 的 fork。原项目提供 Windows 版战术编辑、存档对战和批量测试；我们在此基础上增加了 Mac 原生界面和引擎适配。当前版本 **0.8.1**，基于上游 **v1109.3 / `6cb32bf`**，沿用 [MIT 许可](LICENSE)。
+这是 [lqf0624/fm-tactics-lab](https://github.com/lqf0624/fm-tactics-lab) 的 fork。原项目提供 Windows 版战术编辑、存档对战和批量测试；我们在此基础上增加了 Mac 原生界面和引擎适配。当前版本 **0.8.2**，基于上游 **v1109.3 / `6cb32bf`**，沿用 [MIT 许可](LICENSE)。
 
 ## 现在可以做什么
 
@@ -17,6 +17,7 @@
 - **联赛实验**：2–40 支自定义、随机或存档球队互相比赛，可选循环和排名规则，查看积分榜、球员榜和多次赛季的排名变化。
 - **战术来源**：实验双方和联赛各队都可选指定、随机或原版 AI；支持统一设置与逐队覆盖。新联赛默认对手 AI、我的球队用工作台方案。
 - **固定对照**：球队可分别锁定教练与战术；联赛报告按对手完整战术或双阶段阵型统计表现，列出场次、主客场、进失球、xG 和首发强度。
+- **历史与存储**：查看和清理测试记录，自选测试数据目录并迁移历史；战术、阵容方案和联赛设置独立保留。
 
 普通对战和联赛各自保存球队。把自己的球队加入联赛时会复制一份；以后从联赛列表打开该队的阵容或战术，修改就直接保存到这支联赛球队。每次实验另存开赛配置，旧结果不会随着编辑改变。
 
@@ -39,7 +40,7 @@ git clone https://github.com/winner0007/fm-tactics-lab.git
 cd fm-tactics-lab
 bash macos/scripts/check.sh
 bash macos/scripts/build.sh
-open 'macos/dist/FM Tactics Lab 0.8.1.app'
+open 'macos/dist/FM Tactics Lab 0.8.2.app'
 ```
 
 ## 还没接通的部分

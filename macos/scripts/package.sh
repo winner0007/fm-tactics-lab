@@ -1,14 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-app="dist/FM Tactics Lab 0.8.1.app"
-archive="FM-Tactics-Lab-Mac-0.8.1-arm64.zip"
+app="dist/FM Tactics Lab 0.8.2.app"
+archive="FM-Tactics-Lab-Mac-0.8.2-arm64.zip"
 test -d "$app"
 codesign --verify --deep --strict "$app"
 cp 运行说明.txt dist/运行说明.txt
 stage=$(mktemp -d "$PWD/.build/package-XXXXXX")
 trap 'rm -rf "$stage"' EXIT
-release="FM-Tactics-Lab-Mac-0.8.1"
+release="FM-Tactics-Lab-Mac-0.8.2"
 mkdir "$stage/$release"
 # Keep signed resources and symlinks; omit Finder metadata and extended attributes.
 ditto --norsrc --noextattr --noqtn --noacl "$app" "$stage/$release/$(basename "$app")"
@@ -37,5 +37,5 @@ ditto -x -k "dist/$archive" "$stage/check"
 codesign --verify --deep --strict "$stage/check/$release/$(basename "$app")"
 (cd dist && shasum -a 256 "$archive" > SHA256.txt)
 mkdir -p releases
-cp dist/SHA256.txt releases/macos-v0.8.1-SHA256.txt
+cp dist/SHA256.txt releases/macos-v0.8.2-SHA256.txt
 echo "Packaged: dist/$archive (ad hoc signed; not notarized)"

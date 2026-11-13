@@ -14,6 +14,12 @@
 
 `~/Library/Application Support/FM Tactics Lab Mac/`
 
+这是配置目录，也是测试数据的默认位置。0.8.2 可在“历史与存储”更改测试目录：`experiment-location.json` 记录路径，专用目录用 `.fm-tactics-lab-experiments` 标记。迁移范围仅为 `engine-runs/`、`league-runs/`、`experiments/` 及 `experiment.csv`、`experiment.json`、`original-matches.json`、`latest-batch.json`、`latest-league.json`。下面的其他配置和导入缓存仍保存在原配置目录。
+
+迁移先复制，按相对路径和 SHA-256 核对每个文件，并确认源目录未变，再原子保存新位置。成功后原测试文件移到废纸篓；清理失败会说明新位置已启用、旧副本仍需处理。目标不覆盖现有目录，不跟随测试目录中的符号链接；外置目录不可用时停止写入，不自动回退到默认位置。
+
+清理单次测试会移走该目录及关联的当前查看索引；全部清理覆盖上述测试条目，保留工作台、球员、方案库、联赛设置、导入缓存和用户的其他文件。旧版另外保存的统计汇总是独立条目；0.8.2 原版对战不再重复生成这类副本。清理不会删除应用外手动导出的文件。
+
 | 文件或目录 | 内容 |
 | --- | --- |
 | `team-presets/<方案 ID>.json` | 命名球队方案，格式 `tactics-lab-mac/team-preset/1`；独立快照，不带对手和实验结果 |
@@ -23,7 +29,7 @@
 | `simulation-workers.json` | 上次选择的并行通道数，范围 1–256 |
 | `league-setup.json` | 当前联赛球队、规则和赛程 |
 | `editing-league-team.json` | 当前编辑的联赛球队 ID，重开应用可恢复 |
-| `league-setup-backups/` | 导入另一套联赛前保存的原配置，可用初始化 JSON 入口恢复 |
+| `league-setup-backups/` | 导入另一套联赛前保存的原配置，可用“导入联赛方案”恢复 |
 | `engine-runs/<批次 ID>/` | 普通测试的配置、批次信息、逐场结果与运行日志 |
 | `league-runs/<实验 ID>/run.json` | 联赛开赛配置、赛程、种子、进度和结果 |
 | `league-runs/<实验 ID>/matches/<序号>/` | 每场比赛的配置、原始日志和 `result.json` |
@@ -34,6 +40,8 @@
 0.8 的 `TeamManagement.selection` 保存固定／随机／原版 AI，`tacticSeed` 保存随机战术种子；球员随机与战术随机各自独立。`LeagueSetup.defaultTactics` 是未覆盖对手的默认值，旧文件缺省仍为固定战术。`testTeamID` 记录待测球队；报告的 `reportTeamID` 只改变高亮，不修改冻结的设置。
 
 AI 生成记录位于普通批次的 `tactics/` 或联赛的 `tactics/<赛程 ID>/`：`requested.json` 是请求，`generation.jsonl` 是原版回读，`resolved.json` 是实际比赛输入，`preparation.json` 绑定请求、回执和引擎指纹。批次 `preparation` 与联赛 `preparedTactics` 同时保存这些数据；续跑核对配置、种子、球员身份和引擎，不能拿新的编辑结果替换旧快照。AI 准备中停止也保留输入，已完成的生成结果不会重复生成。
+
+0.8.2 联赛分批准备、分批比赛：首批不超过 8 场，后续批次按选择的通道数执行。AI 种子仍为联赛起始种子加原赛程索引，重复赛季沿用同一对阵快照；比赛种子继续按全局场次索引递增。旧版已经准备、尚未开赛的实验可以继续，不需要丢弃准备结果。
 
 `save-imports/` 也保存 DAT 目录和阵容输出。DAT 来源指纹由四个组件名称及各自文件 SHA-256 组合得到；读取选队时重新核对。输出球员的 `databaseRaw` 保留初始化前的值，`initializedFields` 记录补全数量；后续工作台保存的是已导入数值。数据库源文件不修改，也不复制进发布包。
 
@@ -51,7 +59,7 @@ AI 生成记录位于普通批次的 `tactics/` 或联赛的 `tactics/<赛程 ID
 - 复用完整单队：阵容方案库 JSON；普通对战的完整方案 JSON 包含双方，两种格式使用各自入口。
 - 给人看结果：HTML 报告，包含图表、成绩与实际使用的球队配置。
 - 继续分析：球队／球员 CSV；保存完整实验用 JSON。
-- 复用球队和规则：联赛初始化 JSON；这份文件没有比赛结果。
+- 复用球队和规则：“导出联赛方案”保存 JSON；这份文件没有比赛结果。
 
 导出的联赛结果 JSON 包含全部比赛、原始统计和配置，供外部分析或继续开发使用。目前应用恢复实验使用本机实验目录，尚无结果 JSON 的联赛恢复导入按钮。
 

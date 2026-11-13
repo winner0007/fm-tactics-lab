@@ -24,7 +24,12 @@ func XCTAssertThrowsError<T>(_ expression: @autoclosure () throws -> T, _ messag
         let management=ManagementAnalysisTests()
         let strategy=StrategyTests()
         let selection=TacticSelectionTests()
+        let storage=StorageWorkflowTests()
         let tests: [(String,() throws -> Void)] = [
+            ("History migration preserves editor data and original files",storage.testMigrationCopiesOnlyHistoryAndKeepsOriginal),
+            ("History paths reject symlinks and escapes",storage.testHistoryRejectsEscapesAndSymlinks),
+            ("Tactic labels follow effective selection",storage.testTacticModeLabelsRespectInheritanceAndLocks),
+            ("League tactics preserve player attributes across fixtures",storage.testLeagueTacticModesNeverRandomizePlayerAttributes),
             ("AI modes, locks and legacy league",selection.testModesLocksAndLegacyLeague),
             ("Random tactics and copying preserve personnel",selection.testRandomAndCopyPreservePersonnelAndConditions),
             ("AI generation rejects identity and input tampering",selection.testGenerationReceiptRejectsIdentityAndInputTampering),

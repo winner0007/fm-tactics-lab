@@ -28,7 +28,8 @@ struct TeamManagementView:View {
             Divider()
             Toggle("锁定战术",isOn:Binding(get:{management.tacticLocked},set:{v in store.change(allowLockChanges:true){$0.management.tacticLocked=v}}))
             Text("锁定后保留阵型、角色、球队与个人指令、定位球套路；仍可换首发、主罚人、球员能力和开赛状态。修改或导入其他战术前需先解锁。").font(.callout).foregroundStyle(Theme.muted)
-            Text("战术来源："+management.tacticSource).font(.caption).foregroundStyle(Theme.muted)
+            Text(management.selectionDescription(inherited:store.editedLeagueTeam.map{$0.id==store.leagueSetup.testTeamID ? .fixed:store.leagueSetup.defaultTactics ?? .fixed} ?? .fixed)).font(.callout)
+            DisclosureGroup("工作台方案来源") {Text(management.workbenchSource).font(.caption).foregroundStyle(Theme.muted)}
             Text("原版 AI 使用导入的教练参数制定赛前战术；缺少或无法唯一确认时，使用原版测试教练参数并标明来源。手填姓名和风格标签不等于导入教练能力。实验不运行董事会换帅；指定战术的临场切换按你的规则执行。").font(.caption).foregroundStyle(Theme.muted)
         }.padding(24).frame(width:770).disabled(store.leagueRunning && store.editedLeagueTeam != nil)
     }

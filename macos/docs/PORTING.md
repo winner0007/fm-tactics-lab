@@ -2,7 +2,7 @@
 
 ## 当前做到哪里
 
-0.8 在原有临场切换、并行比赛和分组报告上，增加原版 AI 赛前生成、DAT 初始球队导入和本队高亮。新开档读取、球队锁定和 FMF 读写保留。上游 Windows 代码保留在原目录，Mac 实现在 `macos/`。产品边界见[战术与 AI](TACTICS_AND_AI.md)，签名条件见[打包说明](DISTRIBUTION.md)。
+0.8.2 已有原版 AI 赛前生成、DAT 初始球队导入、本队高亮和历史管理。联赛分批准备战术并比赛，真实球队保留导入属性；测试数据可迁移到自选目录。上游 Windows 代码保留在原目录，Mac 实现在 `macos/`。产品边界见[战术与 AI](TACTICS_AND_AI.md)，签名条件见[打包说明](DISTRIBUTION.md)。
 
 当前适配 FM27 `27.0.0.2493426` 和 `27.0.1.2503222` 的指定 arm64 二进制；引擎指纹、字段和 ABI 依据在 [实测记录](MAC_ENGINE_STATUS.md)。游戏更新后要重新验证，不能只改版本字符串。
 
@@ -25,6 +25,7 @@
 | 三套战术与原版临场命令 | `MatchStrategy.swift`、`MatchStrategyView.swift`、`native/EngineStrategy.h` |
 | 进球事件与分段统计 | `native/EngineGoals.h`、`EngineStatistics.h`、`MatchAnalysis.swift`、`TacticalMetrics.swift`、`MatchAnalysisExport.swift` |
 | 多通道与取消恢复 | `SimulationConcurrency.swift`、`MatchQueue.swift`、`OriginalMatchJob.swift`、`Store.swift`、`LeagueStore.swift` |
+| 历史清理与保存位置 | `ExperimentStorage.swift`、`HistoryStore.swift`、`HistoryView.swift`；配置目录与测试目录分开 |
 
 阵型、角色、指令锁定和定位球任务参照上游 v1109.3（`6cb32bf`）。修改个人指令策略后运行 `scripts/sync-native-policy.py`，保持 Swift 编辑器与原生宿主的校验一致。
 
@@ -50,6 +51,8 @@
 - `check-simulation-features.sh <输出目录> <宿主> <fm.app>`：先构建 release 模块；验证单路／4 路结果一致、双边临场切换、取消与补缺、64 场终场进球分类、传中合计、分段统计及导出。
 - 应用参数 `--scenario-smoke <目录> --data-dir <目录>/data`：检查普通批次、球队编辑隔离、单队随机、联赛停止续跑、配置快照、恢复和截图。可追加 `--save-smoke <存档路径>` 验证打包后的读取组件。
 - 仅调整报告界面时，使用 `--analysis-preview <已有烟测目录> --data-dir <目录>/data` 重新渲染已有真实结果，不必重跑比赛。
+- `--storage-smoke <目录> --data-dir <目录>/data`：在全新隔离目录验证迁移、废纸篓清理、重开和迁移后的 3 场原版比赛。
+- `--league-progress-smoke <目录> --data-dir <目录>/data`：目录内先放 `legacy-run.json`，验证首批出结果、停止、旧 AI 快照复用及整季续跑。仅重看界面时用 `--league-ui-preview`，不重跑比赛。
 
 测试必须用隔离目录。0.7 本机证据放在 `.build/feature-validation-v3/` 和 `.build/feature-ui-v3/`；早期证据按版本保留，不提交真实存档、导入阵容、日志或反汇编。游戏文件只读，运行中的比赛使用独立进程。不要随意改 `NativeScenario.notes`：历史联赛的配置比较包含这些文本，改动需要考虑旧实验兼容。
 
